@@ -615,9 +615,16 @@ export class AdmissionRelay {
               // Child went away; capture still holds the diagnosis.
             }
           });
-          upstreamRes.on("error", (error) => upstream.destroy(error));
+          // Settle from the response side too: once the response has started,
+          // a dropped connection closes the request before the response
+          // reports the error, and a closed request emits no `error`.
+          const failResponse = (error: Error): void => {
+            upstream.destroy(error);
+            finish(error);
+          };
+          upstreamRes.on("error", failResponse);
           upstreamRes.on("close", () => {
-            if (!responseEnded) upstream.destroy(new RelayError("Upstream response ended prematurely"));
+            if (!responseEnded) failResponse(new RelayError("Upstream response ended prematurely"));
           });
         },
       );
