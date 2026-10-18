@@ -238,6 +238,18 @@ export function buildRequestBody(options: {
   return { body, manifest, toolNames };
 }
 
+/**
+ * Effort level carried by the final request body, if any. The native CLI adds
+ * a per-turn effort statement at its own session level (the CLI default
+ * unless `--effort` is given), and that statement overrides the request-level
+ * `output_config.effort`. Passing this value as `--effort` keeps both equal.
+ */
+export function requestEffort(body: Record<string, unknown>): string | undefined {
+  const config = body["output_config"];
+  const effort = isRecord(config) ? config["effort"] : undefined;
+  return typeof effort === "string" && effort ? effort : undefined;
+}
+
 
 
 export interface RequestFiles {
@@ -291,8 +303,9 @@ export function buildArgv(options: {
   claudeBin: string;
   nativeModelId: string;
   files: RequestFiles;
+  effort?: string | undefined;
 }): { command: string; args: string[] } {
-  const { claudeBin, nativeModelId, files } = options;
+  const { claudeBin, nativeModelId, files, effort } = options;
   const args = [
     "-p",
     "--model",
@@ -321,6 +334,9 @@ export function buildArgv(options: {
     "--mcp-config",
     files.mcpConfigJson,
   ];
+  if (effort !== undefined) {
+    args.push("--effort", effort);
+  }
   return { command: claudeBin, args };
 }
 
@@ -337,6 +353,22 @@ const WINDOWS_ESSENTIALS = [
   "PROGRAMDATA",
 ] as const;
 
+/**
+ * Remove an inherited variable from a copied env. Windows names are
+ * case-insensitive in the child, but the copied object is not, so a
+ * differently cased key would otherwise survive and still be read.
+ */
+function deleteEnvVar(env: NodeJS.ProcessEnv, name: string): void {
+  delete env[name];
+  if (process.platform === "win32") {
+    for (const key of Object.keys(env)) {
+      if (key.toUpperCase() === name) {
+        delete env[key];
+      }
+    }
+  }
+}
+
 /** Child environment: relay routing plus native isolation flags. */
 export function buildChildEnv(options: {
   baseEnv: NodeJS.ProcessEnv;
@@ -348,7 +380,10 @@ export function buildChildEnv(options: {
   if (config) {
     env["CLAUDE_CONFIG_DIR"] = config;
   }
-  delete env["CLAUDE_CODE_EXTRA_BODY"];
+  deleteEnvVar(env, "CLAUDE_CODE_EXTRA_BODY");
+  // Native reads an inherited effort level ahead of `--effort`, which would
+  // silently replace the level Pi selected.
+  deleteEnvVar(env, "CLAUDE_CODE_EFFORT_LEVEL");
   env["ANTHROPIC_BASE_URL"] = options.relayUrl;
   env["ENABLE_TOOL_SEARCH"] = "false";
   env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1";

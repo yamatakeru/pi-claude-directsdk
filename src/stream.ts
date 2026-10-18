@@ -60,6 +60,7 @@ import {
   replayCacheControl,
   buildRequestBody,
   checkEnvConflicts,
+  requestEffort,
   toolBareName,
   writeRequestFiles,
 } from "./request.js";
@@ -400,6 +401,7 @@ async function executeCall(
       claudeBin: resolved[0],
       nativeModelId: requestNativeModelId,
       files,
+      effort: requestEffort(body),
     });
     child = deps.spawn({
       command,
