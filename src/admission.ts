@@ -624,11 +624,15 @@ export class AdmissionRelay {
       this.activeUpstream = upstream;
       upstream.once("socket", (socket: Socket) => {
         this.upstreamConnectionReused = upstream.reusedSocket;
-        // A pooled socket is already connected; a new one connects later.
+        // A pooled socket is already connected. A new one is ready only after
+        // TCP connect, and for HTTPS after the TLS handshake: no request bytes
+        // reach upstream before then.
         const connected = (): void => {
           if (this.phase === "connect") this.phase = "request";
         };
-        if (upstream.reusedSocket || !socket.connecting) connected();
+        if (upstream.reusedSocket) connected();
+        else if (this.target.scheme === "https:") socket.once("secureConnect", connected);
+        else if (!socket.connecting) connected();
         else socket.once("connect", connected);
       });
       upstream.once("timeout", onTimeout);
