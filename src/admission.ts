@@ -192,6 +192,98 @@ export function parseUpstream(raw: string): UpstreamTarget {
   };
 }
 
+/** Relay stage reached when a failure was first recorded. */
+export type RelayFailurePhase =
+  /** Reading the native request body, before any upstream contact. */
+  | "request-body"
+  /** Before the upstream socket connected: no request bytes reached upstream. */
+  | "connect"
+  /** Connected, before upstream response headers arrived. */
+  | "request"
+  /** After upstream response headers arrived. */
+  | "response";
+
+/** One address-level connection error, e.g. from an `AggregateError`. */
+export type RelayFailureCause = {
+  code: string | null;
+  syscall: string | null;
+  address: string | null;
+  port: number | null;
+};
+
+/**
+ * Structured, bounded relay failure. It carries error names, system error
+ * codes, and the upstream addresses Node tried, never request or response
+ * content. Messages are kept only for errors the relay raises itself.
+ */
+export type RelayFailure = RelayFailureCause & {
+  name: string;
+  phase: RelayFailurePhase;
+  message: string | null;
+  /** Inner errors of an `AggregateError` (at most MAX_FAILURE_CAUSES). */
+  causes: RelayFailureCause[];
+};
+
+const MAX_FAILURE_CAUSES = 8;
+const MAX_FAILURE_FIELD = 200;
+
+/** Errors the relay raises itself; their fixed messages are safe to report. */
+class RelayError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = "RelayError";
+  }
+}
+
+function bounded(value: unknown): string | null {
+  return typeof value === "string" && value ? value.slice(0, MAX_FAILURE_FIELD) : null;
+}
+
+function failureCause(error: unknown): RelayFailureCause {
+  const record = isRecord(error) ? error : {};
+  const port = record["port"];
+  return {
+    code: bounded(record["code"]),
+    syscall: bounded(record["syscall"]),
+    address: bounded(record["address"]),
+    port: typeof port === "number" && Number.isInteger(port) ? port : null,
+  };
+}
+
+/** Describe a relay failure without request or response content. */
+function describeRelayFailure(error: unknown, phase: RelayFailurePhase): RelayFailure {
+  const inner =
+    error instanceof AggregateError && Array.isArray(error.errors) ? error.errors : [];
+  return {
+    name: error instanceof Error ? bounded(error.name) ?? "Error" : typeof error,
+    phase,
+    message: error instanceof RelayError ? error.message : null,
+    ...failureCause(error),
+    causes: inner.slice(0, MAX_FAILURE_CAUSES).map(failureCause),
+  };
+}
+
+/** One-line form for error messages, e.g. `AggregateError ECONNREFUSED during connect [...]`. */
+export function formatRelayFailure(failure: RelayFailure): string {
+  const endpoint = ({ address, port }: RelayFailureCause): string => {
+    if (address === null) return "";
+    const host = address.includes(":") ? `[${address}]` : address;
+    return port === null ? host : `${host}:${port}`;
+  };
+  const describe = (cause: RelayFailureCause): string =>
+    [cause.code, cause.syscall, endpoint(cause)].filter(Boolean).join(" ");
+  const own = describe(failure);
+  return (
+    failure.name +
+    (failure.message ? ` (${failure.message})` : "") +
+    (own ? ` ${own}` : "") +
+    ` during ${failure.phase}` +
+    (failure.causes.length > 0
+      ? ` [${failure.causes.map((cause) => describe(cause) || "unknown").join("; ")}]`
+      : "")
+  );
+}
+
 const HOP_BY_HOP = new Set([
   "host",
   "connection",
@@ -209,7 +301,8 @@ export class AdmissionRelay {
   denied = 0;
   status: number | null = null;
   requestId: string | null = null;
-  failure: string | null = null;
+  /** First relay failure, if any; later failures do not replace it. */
+  failure: RelayFailure | null = null;
   capture = new SseCapture();
   errorBody = Buffer.alloc(0);
   /** Fired when the admitted upstream response headers arrive. */
@@ -231,6 +324,7 @@ export class AdmissionRelay {
   private sockets = new Set<Socket>();
   private activeUpstream: ClientRequest | null = null;
   private closing: Promise<void> | null = null;
+  private phase: RelayFailurePhase = "request-body";
   private resolveReady!: () => void;
   private rejectReady!: (error: Error) => void;
 
@@ -294,7 +388,7 @@ export class AdmissionRelay {
 
   abort(): void {
     this.cancelled = true;
-    this.activeUpstream?.destroy(new Error("Admission relay aborted"));
+    this.activeUpstream?.destroy(new RelayError("Admission relay aborted"));
     for (const socket of this.sockets) {
       try {
         socket.destroy();
@@ -312,6 +406,10 @@ export class AdmissionRelay {
       });
     }
     return this.closing;
+  }
+
+  private recordFailure(error: unknown): void {
+    this.failure ??= describeRelayFailure(error, this.phase);
   }
 
   private track(socket: Socket): void {
@@ -374,7 +472,7 @@ export class AdmissionRelay {
     try {
       body = await readBody(req, REQUEST_BODY_CAP);
     } catch (error) {
-      this.failure = error instanceof Error ? error.name : String(error);
+      this.recordFailure(error);
       res.writeHead(400, { Connection: "close" });
       res.end();
       return;
@@ -383,7 +481,7 @@ export class AdmissionRelay {
     try {
       await this.forward(req, res, body);
     } catch (error) {
-      this.failure = error instanceof Error ? error.name : String(error);
+      this.recordFailure(error);
       if (!res.headersSent) {
         res.writeHead(502, { Connection: "close" });
       }
@@ -402,13 +500,14 @@ export class AdmissionRelay {
   ): Promise<void> {
     return new Promise((resolve, reject) => {
       if (this.cancelled || res.destroyed) {
-        reject(new Error("Admission relay closed before forwarding"));
+        reject(new RelayError("Admission relay closed before forwarding"));
         return;
       }
+      this.phase = "connect";
       let settled = false;
       let responseEnded = false;
       const onTimeout = (): void => {
-        upstream.destroy(new Error("Upstream request timed out"));
+        upstream.destroy(new RelayError("Upstream request timed out"));
       };
       const finish = (error?: Error): void => {
         if (settled) return;
@@ -421,11 +520,11 @@ export class AdmissionRelay {
         else resolve();
       };
       const onAborted = (): void => {
-        upstream.destroy(new Error("Native request aborted"));
+        upstream.destroy(new RelayError("Native request aborted"));
       };
       const onDownstreamClose = (): void => {
         if (!responseEnded) {
-          upstream.destroy(new Error("Native response closed before upstream completion"));
+          upstream.destroy(new RelayError("Native response closed before upstream completion"));
         }
       };
       this.requestBodyBytes = body.length;
@@ -450,6 +549,7 @@ export class AdmissionRelay {
           timeout: this.timeoutMs,
         },
         (upstreamRes) => {
+          this.phase = "response";
           this.status = upstreamRes.statusCode ?? null;
           this.requestId =
             (upstreamRes.headers["request-id"] as string | undefined) ??
@@ -490,8 +590,7 @@ export class AdmissionRelay {
               try {
                 this.capture.feed(chunk);
               } catch (error) {
-                this.failure =
-                  error instanceof Error ? error.name : String(error);
+                this.recordFailure(error);
               }
             } else if (this.errorBody.length < ERROR_BODY_CAP) {
               // Bounded: keeps the rejection reason, never the whole stream.
@@ -518,13 +617,19 @@ export class AdmissionRelay {
           });
           upstreamRes.on("error", (error) => upstream.destroy(error));
           upstreamRes.on("close", () => {
-            if (!responseEnded) upstream.destroy(new Error("Upstream response ended prematurely"));
+            if (!responseEnded) upstream.destroy(new RelayError("Upstream response ended prematurely"));
           });
         },
       );
       this.activeUpstream = upstream;
-      upstream.once("socket", () => {
+      upstream.once("socket", (socket: Socket) => {
         this.upstreamConnectionReused = upstream.reusedSocket;
+        // A pooled socket is already connected; a new one connects later.
+        const connected = (): void => {
+          if (this.phase === "connect") this.phase = "request";
+        };
+        if (upstream.reusedSocket || !socket.connecting) connected();
+        else socket.once("connect", connected);
       });
       upstream.once("timeout", onTimeout);
       upstream.on("error", finish);
@@ -543,7 +648,7 @@ function readBody(req: IncomingMessage, cap: number): Promise<Buffer> {
     req.on("data", (chunk: Buffer) => {
       size += chunk.length;
       if (size > cap) {
-        reject(new Error("Request body exceeds relay cap"));
+        reject(new RelayError("Request body exceeds relay cap"));
         req.destroy();
         return;
       }

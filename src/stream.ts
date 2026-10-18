@@ -31,7 +31,7 @@ import type {
   ToolCall,
   TranscriptContext,
 } from "@earendil-works/pi-ai/compat";
-import { AdmissionRelay } from "./admission.js";
+import { AdmissionRelay, formatRelayFailure } from "./admission.js";
 import {
   PREFIX_HASH_ENV,
   RequestMeasurements,
@@ -253,6 +253,7 @@ async function executeCall(
         requestId: relay?.requestId ?? "",
         upstreamRequests: relay?.used ? 1 : 0,
         blockedRequests: relay?.denied ?? 0,
+        relayFailure: relay?.failure ? deepClone(relay.failure) : null,
         nativeCostUsd,
         nativeCostNote: "estimate, not subscription charge",
         cliAvailable,
@@ -686,7 +687,7 @@ async function executeCall(
         throw upstreamError(
           `first upstream attempt: status ${relay.status ?? "unknown"}, ` +
             `capture ${relay.capture.complete ? "complete" : "incomplete"}` +
-            (relay.failure ? `, relay failure ${relay.failure}` : "") +
+            (relay.failure ? `, relay failure ${formatRelayFailure(relay.failure)}` : "") +
             `, native retries denied: ${relay.denied}` +
             (relay.errorText() ? `, upstream said: ${relay.errorText().slice(0, 500)}` : "") +
             (nativeErrorText ? `: ${nativeErrorText}` : ""),
