@@ -51,6 +51,14 @@ import {
 import { PROVIDER_ID, QUALIFIED_CLI_RANGE, nativeModel } from "./models.js";
 import { NativeContextReport, stabilizeNativeRequest } from "./native-context.js";
 import {
+  MidConversationPlan,
+  MidConversationReport,
+  MID_CONVERSATION_ENV,
+  applyMidConversation,
+  midConversationEnabled,
+  planMidConversation,
+} from "./mid-conversation.js";
+import {
   encodeCarrier,
   messageProjection,
   prepareHistory,
@@ -63,6 +71,7 @@ import {
   checkEnvConflicts,
   requestEffort,
   toolBareName,
+  toolPrefixedName,
   writeRequestFiles,
 } from "./request.js";
 import { qualifiedCli, resolveClaude } from "./setup.js";
@@ -250,6 +259,7 @@ async function executeCall(
   let observedUsage: NativeUsage | undefined;
   let abortRelay: (() => void) | undefined;
   let nativeContext: NativeContextReport | null = null;
+  let midConversation: MidConversationReport | null = null;
 
   const metaDiagnostic = (): AssistantMessageDiagnostic => {
     return {
@@ -264,6 +274,7 @@ async function executeCall(
         nativeContext: nativeContext
           ? { applied: [...nativeContext.applied], skipped: [...nativeContext.skipped] }
           : null,
+        midConversation: midConversation ? { ...midConversation } : null,
         nativeCostUsd,
         nativeCostNote: "estimate, not subscription charge",
         cliAvailable,
@@ -342,11 +353,23 @@ async function executeCall(
       thinkingLevelMap: model.thinkingLevelMap,
       maxTokens: options["maxTokens"] as number | undefined,
     });
-    const { frames } = prepareHistory(
+    const { frames, assistantFramesBefore } = prepareHistory(
       history,
       new Set(build.toolNames),
       replayCacheControl(mergedEnv, requestNativeModelId),
     );
+    const midPlan: MidConversationPlan | null = midConversationEnabled(mergedEnv)
+      ? planMidConversation({
+          messages: context.messages,
+          currentPrompt: systemPrompt,
+          currentToolNames: (build.body["tools"] as Array<{ name: string }>).map((tool) => tool.name),
+          assistantFramesBefore,
+          nativeTools: (planned) =>
+            buildRequestBody({ tools: planned }).body["tools"] as Array<{ name: string }>,
+          nativeName: toolPrefixedName,
+          toolsEnabled: options.toolChoice !== "none",
+        })
+      : null;
     measurements.setReplayFrameCount(frames.length);
     measurements.mark("historyPrepared");
 
@@ -394,7 +417,10 @@ async function executeCall(
     relay = await deps.createRelay(upstream, timeoutMs, (raw) => {
       const stabilized = stabilizeNativeRequest(raw, queried);
       nativeContext = stabilized.report;
-      return stabilized.body;
+      if (!midPlan) return stabilized.body;
+      const rewritten = applyMidConversation(stabilized.body, midPlan);
+      midConversation = rewritten.report;
+      return rewritten.body;
     });
     const activeRelay = relay;
     // Stashed at header time, invoked after the response completes and
@@ -414,6 +440,7 @@ async function executeCall(
 
     const childEnv = buildChildEnv({ baseEnv: mergedEnv, relayUrl: relay.url, body });
     delete childEnv[PREFIX_HASH_ENV];
+    delete childEnv[MID_CONVERSATION_ENV];
     const { command, args } = buildArgv({
       claudeBin: resolved[0],
       nativeModelId: requestNativeModelId,

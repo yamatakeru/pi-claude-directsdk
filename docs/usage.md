@@ -28,6 +28,7 @@ The request transport still loads on the first Claude request. See [docs/startup
 | `CLAUDE_DIRECTSDK_COMMAND` | Override the `claude` executable path. |
 | `CLAUDE_DIRECTSDK_CONFIG_DIR` | Point at a logged-in CLI config directory. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Supply a token from `claude setup-token` in the environment Pi runs in. |
+| `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM` | Experimental. Set to `1` to send later prompt and tool changes as mid-conversation system messages instead of rewriting the leading prompt. See [architecture.md](architecture.md#mid-conversation-system-messages-srcmid-conversationts). |
 | `PI_DIRECTSDK_PROMPT_HASHES` | Set to `1` to add SHA-256 hashes of the provider-supplied system prompt and tool definitions to message diagnostics. Unset it or set it to `0` to disable hashes. |
 
 Success and failure diagnostics include request-phase timings, replay counts, upstream request-body bytes, and cache-read share. Unobserved milestones and unavailable cache-read shares are `null`. Milestone times are elapsed milliseconds from call start; durations are separate intervals and are not additive. The spawn-to-replay interval includes CLI startup, and first response data is not necessarily the first generated token.
