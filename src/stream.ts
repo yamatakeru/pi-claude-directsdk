@@ -389,8 +389,7 @@ async function executeCall(
       body,
       manifest: build.manifest,
     });
-    // Keep native per-request context out of the replay-stable prefix; the
-    // final frame is exactly what Pi queried (see src/native-context.ts).
+    // The final frame is exactly what Pi queried.
     const queried = frames[frames.length - 1]?.message.content ?? [];
     relay = await deps.createRelay(upstream, timeoutMs, (raw) => {
       const stabilized = stabilizeNativeRequest(raw, queried);

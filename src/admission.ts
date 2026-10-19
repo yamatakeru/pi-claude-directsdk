@@ -362,14 +362,7 @@ export class AdmissionRelay {
     this.url = "";
   }
 
-  /**
-   * Bind the relay and resolve its URL.
-   *
-   * `prepareBody` runs once on the admitted request body before forwarding.
-   * It is the relay's only payload hook: the provider uses it to keep
-   * native per-request context replay-stable (`src/native-context.ts`). It
-   * must not throw; if it does, the body is forwarded as the CLI built it.
-   */
+  /** Bind the relay. `prepareBody` is the only payload hook (`src/native-context.ts`). */
   static async create(
     upstream: string,
     timeoutMs: number,
@@ -496,7 +489,7 @@ export class AdmissionRelay {
       try {
         body = this.prepareBody(body);
       } catch {
-        // Cache hygiene must never fail the request; forward the native body.
+        // Cache hygiene never fails the request.
       }
     }
 

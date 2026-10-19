@@ -1,27 +1,10 @@
 /**
- * Replay-stable native request context.
- *
- * Every Pi model call replays history through a fresh native child, and the
- * CLI adds per-request context to each request: its session-context reminder
- * on the final user/tool-result frame, and today's date split out of its
- * environment message into a trailing system message. Its message cache
- * breakpoint then lands on that context. None of it recurs in the next request,
- * so the prefix cached at that breakpoint is never read again.
- *
- * The invariant restored here: everything in request N up to its message
- * breakpoint appears unchanged at the start of request N+1. Pi-owned content is
- * identified structurally, as the final frame Pi queried (`prepareHistory`),
- * never by the CLI's wording. The date line is the one exception, and only an
- * exact match moves.
- *
- * Every step acts only on an exact, unique match and otherwise leaves the
- * request untouched, so the worst case is the native request as built. Pi
- * content is never edited. Message cache markers only move earlier and are
- * never added. System, tools, and assistant blocks are never touched.
- *
- * Ported from the Hermes reference relay (`admission.py`:
- * `restore_queried_turn`, `stable_request_context`, `pin_message_breakpoint`,
- * `_frame_first`), see docs/transport-measurements.md.
+ * Replay-stable native request context. The CLI adds per-request context
+ * (its session reminder, the split-out date line) and puts its message
+ * breakpoint on it; none of it recurs in the next request. This restores the
+ * invariant that request N's prefix through its message breakpoint starts
+ * request N+1. Exact matches only; otherwise the body forwards as built.
+ * Ported from the Hermes reference relay; see docs/architecture.md.
  */
 
 import { isDeepStrictEqual as deepEqual } from "node:util";
@@ -31,33 +14,25 @@ import { deepClone, isRecord } from "./types.js";
 type Block = Record<string, unknown>;
 type Message = Record<string, unknown> & { role?: unknown; content?: unknown };
 
-/** Steps that changed the request. */
 export type NativeContextStep =
-  /** The CLI's text appended to the queried tool results was removed. */
   | "toolResultRestored"
-  /** The trailing date message was returned to the environment message. */
   | "dateLineRestored"
-  /** CLI text placed before the queried frame on a later user turn was removed. */
   | "reminderDropped"
-  /** Opening request: CLI text placed before the queried frame was moved after it. */
   | "openingReordered"
-  /** Message breakpoints after the replay-stable span were folded onto its last block. */
   | "breakpointPinned";
 
-/** Why the request, or part of it, was forwarded as the CLI built it. */
 export type NativeContextSkip =
   | "body is not a Messages request"
   | "queried tool results not uniquely matched";
 
-/** Per-request outcome for the meta diagnostic. It never carries content. */
+/** Meta diagnostic outcome; never carries content. */
 export interface NativeContextReport {
   applied: NativeContextStep[];
   skipped: NativeContextSkip[];
 }
 
 const UNCACHEABLE = new Set(["thinking", "redacted_thinking"]);
-// The only trailing system text that moves: the CLI's date line, exactly as its
-// opening request ends the environment message.
+// The only CLI text matched by wording; anything looser could move varying text.
 const DATE_LINE = /^Today's date is \d{4}-\d{2}-\d{2}\.$/;
 
 class QueriedTurnMismatch extends Error {}
@@ -92,7 +67,6 @@ function lastAssistant(messages: Message[]): number {
   return -1;
 }
 
-/** Start indices where `frame` occurs in `blocks`, ignoring cache markers. */
 function frameStarts(blocks: unknown[], frame: Block[]): number[] {
   const starts: number[] = [];
   for (let k = 0; k + frame.length <= blocks.length; k++) {
@@ -101,7 +75,6 @@ function frameStarts(blocks: unknown[], frame: Block[]): number[] {
   return starts;
 }
 
-/** Shape check; anything unexpected forwards unchanged. */
 function wellFormed(messages: unknown): messages is Message[] {
   return (
     Array.isArray(messages) &&
@@ -121,13 +94,7 @@ function wellFormed(messages: unknown): messages is Message[] {
   );
 }
 
-/**
- * Restore the queried tool-result frame: the CLI appends its reminder to the
- * newest tool result (or as trailing text after it). Only trailing bare text is
- * removable, and only when the ordered tool-use IDs anchor the whole frame.
- * Restoration is hygiene, not a gate: a mismatch throws and the caller
- * forwards this part unchanged.
- */
+/** Strip trailing CLI text from the queried tool results; throws on mismatch. */
 function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
   if (!queried.some((block) => block["type"] === "tool_result")) return false;
   const unmatched = (): never => {
@@ -141,7 +108,6 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
     return null;
   };
   const restoreContent = (sent: unknown, host: unknown): unknown => {
-    // Scalar/list equivalence is allowed only for text with no metadata or markers.
     if (typeof host === "string" || typeof sent === "string") {
       const left = joinedText(sent);
       const right = joinedText(host);
@@ -190,7 +156,6 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
         while (sentEnd < sent.length && isBareText(sent[sentEnd])) sentEnd++;
         const original = (host.slice(i, hostEnd) as Array<{ text: string }>).map((b) => b.text).join("");
         const actual = (sent.slice(j, sentEnd) as Array<{ text: string }>).map((b) => b.text).join("");
-        // Text before a protected host block must match exactly; only the end may grow.
         if (!(hostEnd === host.length ? actual.startsWith(original) : actual === original)) {
           return unmatched();
         }
@@ -220,7 +185,6 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
   const nativeIds = native
     .filter((b) => blockType(b) === "tool_result")
     .map((b) => (b as Block)["tool_use_id"]);
-  // Unique ordered result IDs anchor the complete frame; no reminder-pattern search.
   if (!deepEqual(hostIds, nativeIds)) return unmatched();
   const restored = restoreSequence(native, queried);
   if (deepEqual(native, restored)) return false;
@@ -228,7 +192,6 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
   return true;
 }
 
-/** Return the trailing date message to the end of the environment message. */
 function restoreDateLine(messages: Message[]): boolean {
   const last = messages[messages.length - 1];
   const env = messages.slice(0, -1).find((message) => message.role === "system");
@@ -269,11 +232,7 @@ function restoreDateLine(messages: Message[]): boolean {
   return true;
 }
 
-/**
- * On a later user turn, drop plain text the CLI placed before the queried
- * frame. A continuous native session carries this context once; per-call
- * replay would otherwise repeat it on every call and replay it nowhere.
- */
+/** A continuous native session carries this context once; replay would repeat it. */
 function dropReminder(messages: Message[], queried: Block[]): boolean {
   if (!queried.some((block) => block["type"] !== "tool_result")) return false;
   if (lastAssistant(messages) < 0) return false;
@@ -294,11 +253,7 @@ function dropReminder(messages: Message[], queried: Block[]): boolean {
   return true;
 }
 
-/**
- * Opening request: move the CLI text prepended to the first user turn behind
- * the queried frame, the order the CLI already uses on later turns. No block
- * is added, dropped, or edited.
- */
+/** Opening request: move the prepended CLI text behind the queried frame. */
 function frameFirst(messages: Message[], queried: Block[]): boolean {
   if (lastAssistant(messages) >= 0) return false;
   const first = messages.find((message) => message.role === "user");
@@ -317,12 +272,9 @@ function frameFirst(messages: Message[], queried: Block[]): boolean {
 }
 
 /**
- * Fold message breakpoints placed after the replay-stable span onto its last
- * cacheable block. The span is everything through the last assistant message
- * plus the leading blocks of the newest user message that equal the queried
- * frame. When the first changed block is a tool result, the span ends at the
- * assistant message (Hermes measured no hit on the unchanged results before
- * it). Markers never move later and are never added.
+ * Fold later message markers onto the last block that the next request
+ * replays. Before a changed tool result the span ends at the assistant
+ * message: Hermes measured no hit on the unchanged results before it.
  */
 function pinBreakpoint(messages: Message[], queried: Block[]): boolean {
   const positions: Array<{ i: number; j: number; block: Block }> = [];
@@ -358,10 +310,7 @@ function pinBreakpoint(messages: Message[], queried: Block[]): boolean {
   return true;
 }
 
-/**
- * Stabilize one native Messages request body against the frame Pi queried.
- * Pure: no I/O, never throws. Returns the original buffer when nothing changed.
- */
+/** Pure and non-throwing; returns the original buffer when nothing changed. */
 export function stabilizeNativeRequest(
   body: Buffer,
   queried: readonly NativeContentBlock[],
@@ -388,7 +337,6 @@ export function stabilizeNativeRequest(
     }
     if (restoreDateLine(messages)) report.applied.push("dateLineRestored");
     if (dropReminder(messages, frame)) report.applied.push("reminderDropped");
-    // Reordering only serves caching; without any marker the request stays as built.
     const hasMarks = messages.some(
       (m) => Array.isArray(m.content) && m.content.some((b) => isRecord(b) && "cache_control" in b),
     );
