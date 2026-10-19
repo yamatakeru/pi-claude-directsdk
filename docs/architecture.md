@@ -57,7 +57,7 @@ The child environment (`buildChildEnv`) points `ANTHROPIC_BASE_URL` at the relay
 
 ### Admission relay (`src/admission.ts`)
 
-The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Request identity and headers stay native. The payload stays native except for one bounded step, described below; HTTP transfer encoding also changes.
+The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Request identity and headers stay native. The payload stays native except for one bounded step and the opt-in mid-conversation rewrite, both described below; HTTP transfer encoding also changes.
 
 ### Replay-stable native context (`src/native-context.ts`)
 
@@ -76,6 +76,27 @@ Pi content, assistant blocks (including signed thinking), system blocks, and too
 The relay reconstructs the upstream assistant message from the SSE stream (`SseCapture`) and records status, request id, the first relay failure, and an error body (capped at 64 KiB).
 
 The failure record (`relayFailure` in the `pi-claude-directsdk/meta` diagnostic, also summarized in the error text) holds the error name, the Node `code`, `syscall`, address, and port. For an `AggregateError`, such as a failed connection to every resolved address, it also holds each inner error's code and address (at most eight). It also records the phase: `request-body`, `connect` (no request bytes reached upstream), `request`, or `response`. It never contains request or response content. Messages are kept only for the relay's own fixed errors. Upstream targets must be HTTPS, except loopback HTTP endpoints. Request bodies are capped at 512 MiB.
+
+### Mid-conversation system messages (`src/mid-conversation.ts`)
+
+Experimental and off by default. By default, the provider collapses Pi's system messages into one leading prompt and the current tool list. A prompt section or tool change therefore rewrites the start of the request, and the next call misses the whole cache.
+
+With `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, the relay rewrites the admitted request into the form Pi's own Anthropic provider uses:
+
+- The leading system block carries Pi's initial prompt.
+- The tool list carries the initial tools, a deferred placeholder, and later tools with `defer_loading`.
+- Each later Pi system message is inserted before the next assistant message as a `role: system` message, carrying its rendered section changes and `tool_addition` / `tool_removal` references.
+
+The CLI still receives the collapsed prompt and every current tool, so the inert MCP server advertises all of them.
+
+The request is forwarded collapsed, with the reason in the `midConversation` meta diagnostic, in these cases:
+
+- the transcript has no leading system message, or the tool declarations cannot be built;
+- the route has no mid-conversation system messages (for example Haiku 4.5);
+- the collapsed prompt or tool list does not match exactly;
+- the assistant messages do not match the replay.
+
+When a tool name is redefined, tool changes cannot be expressed by name. Section updates are still sent, and the current tool list is sent as today.
 
 ### Child supervision (`src/process.ts`)
 

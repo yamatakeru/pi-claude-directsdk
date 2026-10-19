@@ -126,6 +126,22 @@ Limits:
 - After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour; the Hermes reference mitigates it with an extra turn-start marker. It is not part of this change.
 - A later CLI that changes these placements disables the affected step and shows up in `nativeContext`, not as a failed call.
 
+### Mid-conversation system messages (experimental)
+
+By default, a later Pi prompt or tool change rewrites the leading prompt and tool list, and the next call misses the whole cache. On Claude Code 2.1.303, the CLI ignored `type: "system"` lines on stream-json input and rejected `role: "system"` inside a user line, so the change cannot reach the API through the CLI. The opt-in `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1` therefore rewrites the admitted request in the relay; see [architecture.md](architecture.md#mid-conversation-system-messages-srcmid-conversationts).
+
+A loopback capture covered three changes after the first call: a section update with an added tool, a removed tool, and a redefined tool. For additions and removals, the leading system blocks and the tool-list prefix stayed identical across calls, and each request's prefix through its message breakpoint replayed unchanged. A redefined tool fell back to the current tool list, as designed. Haiku 4.5, which has no mid-conversation system messages, was forwarded collapsed.
+
+Three approved paid requests went through the provider path with `claude-haiku-5-5`. A prompt section change and an added tool came between calls 1 and 2:
+
+| Request | What happened | Cache-read tokens | Cache-write tokens | Uncached input |
+|---|---|---:|---:|---:|
+| 1 | Initial tools | 0 | 7,795 | 493 |
+| 2 | Section changed, tool added; the model called the added tool | 7,795 | 350 | 151 |
+| 3 | Tool result returned; final answer | 8,145 | 215 | 2 |
+
+The added tool was declared with `defer_loading` and activated by `tool_addition`; the model called it through the inert MCP server. Each request admitted one upstream request. Opus 5.5 and Sonnet 5.5 produced the same request shape in the loopback capture, but only Haiku 5.5 was measured on the subscription route.
+
 ### Paid verification of the repair
 
 Three approved requests ran sequentially through one Pi RPC process with the historical anchor and shared connection pools enabled. All three succeeded, each admitted one upstream request, and the process produced no stderr. Auto-retry and auto-compaction remained disabled.
