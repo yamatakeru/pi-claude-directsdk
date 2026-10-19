@@ -24,6 +24,7 @@
  * `_frame_first`), see docs/transport-measurements.md.
  */
 
+import { isDeepStrictEqual as deepEqual } from "node:util";
 import type { NativeContentBlock } from "./types.js";
 import { deepClone, isRecord } from "./types.js";
 
@@ -60,24 +61,6 @@ const UNCACHEABLE = new Set(["thinking", "redacted_thinking"]);
 const DATE_LINE = /^Today's date is \d{4}-\d{2}-\d{2}\.$/;
 
 class QueriedTurnMismatch extends Error {}
-
-function deepEqual(a: unknown, b: unknown): boolean {
-  if (a === b) return true;
-  if (Array.isArray(a) || Array.isArray(b)) {
-    return (
-      Array.isArray(a) &&
-      Array.isArray(b) &&
-      a.length === b.length &&
-      a.every((value, i) => deepEqual(value, b[i]))
-    );
-  }
-  if (!isRecord(a) || !isRecord(b)) return false;
-  const keys = Object.keys(a);
-  return (
-    keys.length === Object.keys(b).length &&
-    keys.every((key) => Object.prototype.hasOwnProperty.call(b, key) && deepEqual(a[key], b[key]))
-  );
-}
 
 function plain(block: unknown): unknown {
   if (!isRecord(block)) return block;
