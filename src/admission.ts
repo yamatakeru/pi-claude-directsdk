@@ -325,12 +325,18 @@ export class AdmissionRelay {
   private activeUpstream: ClientRequest | null = null;
   private closing: Promise<void> | null = null;
   private phase: RelayFailurePhase = "request-body";
+  private readonly prepareBody: ((body: Buffer) => Buffer) | undefined;
   private resolveReady!: () => void;
   private rejectReady!: (error: Error) => void;
 
-  private constructor(target: UpstreamTarget, timeoutMs: number) {
+  private constructor(
+    target: UpstreamTarget,
+    timeoutMs: number,
+    prepareBody: ((body: Buffer) => Buffer) | undefined,
+  ) {
     this.target = target;
     this.timeoutMs = timeoutMs;
+    this.prepareBody = prepareBody;
     this.route = `/admit/${randomBytes(32).toString("base64url")}`;
     this.server = createServer((req, res) => {
       void this.handle(req, res);
@@ -356,12 +362,13 @@ export class AdmissionRelay {
     this.url = "";
   }
 
-  /** Bind the relay and resolve its URL. */
+  /** Bind the relay. `prepareBody` is the only payload hook (`src/native-context.ts`). */
   static async create(
     upstream: string,
     timeoutMs: number,
+    prepareBody?: (body: Buffer) => Buffer,
   ): Promise<AdmissionRelay> {
-    const relay = new AdmissionRelay(parseUpstream(upstream), timeoutMs);
+    const relay = new AdmissionRelay(parseUpstream(upstream), timeoutMs, prepareBody);
     await relay.ready;
     const address = relay.server.address();
     if (address === null || typeof address === "string") {
@@ -476,6 +483,14 @@ export class AdmissionRelay {
       res.writeHead(400, { Connection: "close" });
       res.end();
       return;
+    }
+
+    if (this.prepareBody) {
+      try {
+        body = this.prepareBody(body);
+      } catch {
+        // Cache hygiene never fails the request.
+      }
     }
 
     try {
