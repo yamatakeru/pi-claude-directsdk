@@ -92,6 +92,40 @@ The existing benchmark was run against a loopback-only, refused upstream to insp
 
 Those model calls failed as expected because the upstream was blocked. That check verified native marker emission only. The subsequent paid verification below confirmed successful generation and high warm-cache reuse with one-hour controls. Longer gaps or more than the API's backward lookup window between anchors can still prevent reuse.
 
+### Replay-stable native context
+
+The historical anchor still left the previous call's final frame uncached. On Claude Code 2.1.303, a loopback capture of real CLI requests (structure and hashes only) showed three causes:
+
+- The CLI's session-context reminder, which carries the account email in an empty child directory, is added to the final frame. It appears in three places: as text before the user message, as a suffix of a string tool result, or as trailing text after parallel tool results and a user message.
+- From the second request on, today's date moves from the end of the environment system message to a trailing system message. That changes the conversation's second message after call 1, so call 2 missed everything after it.
+- The CLI's message breakpoint sits on that trailing date message, which never recurs.
+
+`CLAUDE_CODE_DISABLE_ATTACHMENTS=1` did not change the request. No setting was found that removes the reminder while keeping OAuth.
+
+The relay now restores a replay-stable prefix (see [architecture.md](architecture.md#replay-stable-native-context-srcnative-contextts)). This ports the Hermes reference relay's `restore_queried_turn`, `stable_request_context`, `_frame_first`, and `pin_message_breakpoint` ([hermes-official-plugins#83](https://github.com/NousResearch/hermes-official-plugins/pull/83) and earlier changes). After the change, the same capture showed every request's prefix through its message breakpoint replayed unchanged in the next request. This held for user turns, a tool round, and parallel tools followed by text. Each request still had at most four breakpoints.
+
+A paid three-request `warm` run then went through installed Pi 1.3.0 with Claude Code 2.1.303 and `claude-haiku-5-5`. It used no prior session and short prompts. All three requests succeeded, each admitted one upstream request, and the Pi prompt and tool hashes stayed stable:
+
+| Request | Cache-read tokens | Cache-write tokens | Cache-read share |
+|---|---:|---:|---:|
+| 1 | 19,431 | 9,109 | 66.93% |
+| 2 | 28,540 | 376 | 98.69% |
+| 3 | 28,916 | 56 | 99.79% |
+
+Request 1 read the system and tools prefix cached by earlier runs. Requests 2 and 3 read the whole previous request and wrote only the new turn. Before this change, the previous call's final frame was written again on every call, and call 2 re-wrote the opening turn.
+
+Three options were considered for the reminder:
+
+- **Drop it after the opening call (adopted, as in Hermes).** Native Claude Code attaches this context only when the history lacks it, so a continuous session carries it once. Dropping it keeps every replay in the context its signed thinking was generated against. In this transport it carries only the account email.
+- **Move it after the frame on every call (rejected).** The model would see it on every call, but each call's thinking would be generated with context that its replay lacks.
+- **Pin it after the conversation's first frame (not adopted).** This is closest to native behaviour, but it has no reference measurements, and it requires normalizing CLI text that differs by placement.
+
+Limits:
+
+- Routes without a mid-conversation environment message, such as Haiku 4.5, still miss once on call 2: the CLI changes its opening-turn text between the first and second request.
+- After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour; the Hermes reference mitigates it with an extra turn-start marker. It is not part of this change.
+- A later CLI that changes these placements disables the affected step and shows up in `nativeContext`, not as a failed call.
+
 ### Paid verification of the repair
 
 Three approved requests ran sequentially through one Pi RPC process with the historical anchor and shared connection pools enabled. All three succeeded, each admitted one upstream request, and the process produced no stderr. Auto-retry and auto-compaction remained disabled.

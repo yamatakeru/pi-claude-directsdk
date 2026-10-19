@@ -325,12 +325,18 @@ export class AdmissionRelay {
   private activeUpstream: ClientRequest | null = null;
   private closing: Promise<void> | null = null;
   private phase: RelayFailurePhase = "request-body";
+  private readonly prepareBody: ((body: Buffer) => Buffer) | undefined;
   private resolveReady!: () => void;
   private rejectReady!: (error: Error) => void;
 
-  private constructor(target: UpstreamTarget, timeoutMs: number) {
+  private constructor(
+    target: UpstreamTarget,
+    timeoutMs: number,
+    prepareBody: ((body: Buffer) => Buffer) | undefined,
+  ) {
     this.target = target;
     this.timeoutMs = timeoutMs;
+    this.prepareBody = prepareBody;
     this.route = `/admit/${randomBytes(32).toString("base64url")}`;
     this.server = createServer((req, res) => {
       void this.handle(req, res);
@@ -356,12 +362,20 @@ export class AdmissionRelay {
     this.url = "";
   }
 
-  /** Bind the relay and resolve its URL. */
+  /**
+   * Bind the relay and resolve its URL.
+   *
+   * `prepareBody` runs once on the admitted request body before forwarding.
+   * It is the relay's only payload hook: the provider uses it to keep
+   * native per-request context replay-stable (`src/native-context.ts`). It
+   * must not throw; if it does, the body is forwarded as the CLI built it.
+   */
   static async create(
     upstream: string,
     timeoutMs: number,
+    prepareBody?: (body: Buffer) => Buffer,
   ): Promise<AdmissionRelay> {
-    const relay = new AdmissionRelay(parseUpstream(upstream), timeoutMs);
+    const relay = new AdmissionRelay(parseUpstream(upstream), timeoutMs, prepareBody);
     await relay.ready;
     const address = relay.server.address();
     if (address === null || typeof address === "string") {
@@ -476,6 +490,14 @@ export class AdmissionRelay {
       res.writeHead(400, { Connection: "close" });
       res.end();
       return;
+    }
+
+    if (this.prepareBody) {
+      try {
+        body = this.prepareBody(body);
+      } catch {
+        // Cache hygiene must never fail the request; forward the native body.
+      }
     }
 
     try {

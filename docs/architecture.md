@@ -57,7 +57,21 @@ The child environment (`buildChildEnv`) points `ANTHROPIC_BASE_URL` at the relay
 
 ### Admission relay (`src/admission.ts`)
 
-The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Only HTTP transfer encoding changes. Request identity and payload stay native.
+The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Request identity and headers stay native. The payload stays native except for one bounded step, described below; HTTP transfer encoding also changes.
+
+### Replay-stable native context (`src/native-context.ts`)
+
+Every Pi model call replays history through a fresh child, and the CLI adds per-request context: its session-context reminder on the final user or tool-result frame, and today's date split out of its environment message into a trailing system message. Its message cache breakpoint lands on that context. None of it recurs in the next request, so the prefix cached there would never be read.
+
+Before forwarding, the relay applies `stabilizeNativeRequest` to the admitted body. It restores one invariant: everything in request N up to its message breakpoint appears unchanged at the start of request N+1. Pi-owned content is identified structurally, as the final frame `prepareHistory` built. The CLI's wording is never matched, except for the exact date line.
+
+- Tool results: text the CLI appended to the queried tool results is removed, only when the ordered tool-use IDs anchor the whole frame.
+- Later user turns: plain text the CLI placed before the queried frame is dropped, only when the frame occurs exactly once. A continuous native session carries this context once; per-call replay would otherwise repeat it on every call and replay it nowhere.
+- Opening request: that text is moved after the frame instead, so the opening turn is cached once.
+- The trailing date line returns to the end of the environment message, where the opening request had it.
+- Message breakpoints after the replay-stable span move onto its last cacheable block.
+
+Pi content, assistant blocks (including signed thinking), system blocks, and tools are never edited. Markers only move earlier and are never added. A request that does not match exactly is forwarded as the CLI built it; this step never fails a call. The `nativeContext` field of the meta diagnostic lists the applied steps and skip reasons, never content. These are CLI-version-sensitive behaviours; see [transport-measurements.md](transport-measurements.md#replay-stable-native-context).
 
 The relay reconstructs the upstream assistant message from the SSE stream (`SseCapture`) and records status, request id, the first relay failure, and an error body (capped at 64 KiB).
 

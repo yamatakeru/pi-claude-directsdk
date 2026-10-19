@@ -49,6 +49,7 @@ import {
   upstreamError,
 } from "./errors.js";
 import { PROVIDER_ID, QUALIFIED_CLI_RANGE, nativeModel } from "./models.js";
+import { NativeContextReport, stabilizeNativeRequest } from "./native-context.js";
 import {
   encodeCarrier,
   messageProjection,
@@ -91,7 +92,11 @@ export interface CallDeps {
     timeoutMs: number;
     signal?: AbortSignal | undefined;
   }) => ChildHandle;
-  createRelay: (upstream: string, timeoutMs: number) => Promise<AdmissionRelay>;
+  createRelay: (
+    upstream: string,
+    timeoutMs: number,
+    prepareBody?: (body: Buffer) => Buffer,
+  ) => Promise<AdmissionRelay>;
   checkCli: (resolved: string[], env: NodeJS.ProcessEnv) => boolean;
   makeRequestDir: () => string;
   childCwd: () => string;
@@ -99,7 +104,8 @@ export interface CallDeps {
 
 export const defaultDeps: CallDeps = {
   spawn: (options) => spawnSupervised(options),
-  createRelay: (upstream, timeoutMs) => AdmissionRelay.create(upstream, timeoutMs),
+  createRelay: (upstream, timeoutMs, prepareBody) =>
+    AdmissionRelay.create(upstream, timeoutMs, prepareBody),
   checkCli: (resolved, env) => qualifiedCli(resolved, env),
   makeRequestDir: () => mkdtempSync(join(tmpdir(), "pi-directsdk-")),
   childCwd: () => stableChildCwd(),
@@ -243,6 +249,7 @@ async function executeCall(
   let nativeCostUsd = -1;
   let observedUsage: NativeUsage | undefined;
   let abortRelay: (() => void) | undefined;
+  let nativeContext: NativeContextReport | null = null;
 
   const metaDiagnostic = (): AssistantMessageDiagnostic => {
     return {
@@ -254,6 +261,9 @@ async function executeCall(
         upstreamRequests: relay?.used ? 1 : 0,
         blockedRequests: relay?.denied ?? 0,
         relayFailure: relay?.failure ? deepClone(relay.failure) : null,
+        nativeContext: nativeContext
+          ? { applied: [...nativeContext.applied], skipped: [...nativeContext.skipped] }
+          : null,
         nativeCostUsd,
         nativeCostNote: "estimate, not subscription charge",
         cliAvailable,
@@ -379,7 +389,14 @@ async function executeCall(
       body,
       manifest: build.manifest,
     });
-    relay = await deps.createRelay(upstream, timeoutMs);
+    // Keep native per-request context out of the replay-stable prefix; the
+    // final frame is exactly what Pi queried (see src/native-context.ts).
+    const queried = frames[frames.length - 1]?.message.content ?? [];
+    relay = await deps.createRelay(upstream, timeoutMs, (raw) => {
+      const stabilized = stabilizeNativeRequest(raw, queried);
+      nativeContext = stabilized.report;
+      return stabilized.body;
+    });
     const activeRelay = relay;
     // Stashed at header time, invoked after the response completes and
     // before the completion gate consumes it, per the streamSimple contract.
