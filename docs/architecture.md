@@ -57,7 +57,7 @@ The child environment (`buildChildEnv`) points `ANTHROPIC_BASE_URL` at the relay
 
 ### Admission relay (`src/admission.ts`)
 
-The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Request identity and headers stay native. The payload stays native except for one bounded step, described below; HTTP transfer encoding also changes.
+The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Request identity and headers stay native. The payload stays native except for one bounded step and the opt-in mid-conversation rewrite, both described below; HTTP transfer encoding also changes.
 
 ### Replay-stable native context (`src/native-context.ts`)
 
@@ -91,6 +91,7 @@ The CLI still receives the collapsed prompt and every current tool, so the inert
 
 The request is forwarded collapsed, with the reason in the `midConversation` meta diagnostic, in these cases:
 
+- the transcript has no leading system message, or the tool declarations cannot be built;
 - the route has no mid-conversation system messages (for example Haiku 4.5);
 - the collapsed prompt or tool list does not match exactly;
 - the assistant messages do not match the replay.

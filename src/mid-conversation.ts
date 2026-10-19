@@ -45,6 +45,8 @@ export interface MidConversationPlan {
 }
 
 export type MidConversationSkip =
+  | "transcript has no leading system message"
+  | "tool declarations cannot be built"
   | "route has no mid-conversation system messages"
   | "leading prompt not uniquely matched"
   | "tool list differs from the current tools"
@@ -55,6 +57,10 @@ export interface MidConversationReport {
   updates: number;
   nativeToolChanges: boolean;
   skipped: MidConversationSkip | null;
+}
+
+export function skippedReport(skipped: MidConversationSkip): MidConversationReport {
+  return { applied: false, updates: 0, nativeToolChanges: false, skipped };
 }
 
 export function midConversationEnabled(env: NodeJS.ProcessEnv): boolean {
@@ -76,9 +82,9 @@ export function planMidConversation(options: {
   nativeTools: (tools: Tool[]) => WireTool[];
   nativeName: (name: string) => string;
   toolsEnabled: boolean;
-}): MidConversationPlan | null {
+}): MidConversationPlan | MidConversationSkip {
   const initial = getInitialSystemMessage(options.messages);
-  if (!initial) return null;
+  if (!initial) return "transcript has no leading system message";
   const initialTools = initial.toolsAdded ?? [];
   // Tool changes reference tools by name, so a redefined name cannot be expressed.
   const toolChanges =
@@ -120,7 +126,7 @@ export function planMidConversation(options: {
       ];
     } catch {
       // The updates already reference tools by name; without their declarations, keep collapsed.
-      return null;
+      return "tool declarations cannot be built";
     }
   }
 
@@ -145,20 +151,13 @@ export function applyMidConversation(
   } catch {
     parsed = undefined;
   }
-  if (!isRecord(parsed)) {
-    return { body: raw, report: { applied: false, updates: 0, nativeToolChanges: false, skipped: "leading prompt not uniquely matched" } };
-  }
+  if (!isRecord(parsed)) return { body: raw, report: skippedReport("leading prompt not uniquely matched") };
   const report = rewrite(parsed, plan);
   return { body: report.applied ? Buffer.from(JSON.stringify(parsed), "utf-8") : raw, report };
 }
 
 function rewrite(body: Record<string, unknown>, plan: MidConversationPlan): MidConversationReport {
-  const report = (skipped: MidConversationSkip): MidConversationReport => ({
-    applied: false,
-    updates: 0,
-    nativeToolChanges: false,
-    skipped,
-  });
+  const report = skippedReport;
   const messages = body["messages"];
   const system = body["system"];
   const tools = body["tools"] ?? [];

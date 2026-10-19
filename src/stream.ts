@@ -53,8 +53,10 @@ import { NativeContextReport, stabilizeNativeRequest } from "./native-context.js
 import {
   MidConversationPlan,
   MidConversationReport,
+  MidConversationSkip,
   MID_CONVERSATION_ENV,
   applyMidConversation,
+  skippedReport,
   midConversationEnabled,
   planMidConversation,
 } from "./mid-conversation.js";
@@ -358,7 +360,7 @@ async function executeCall(
       new Set(build.toolNames),
       replayCacheControl(mergedEnv, requestNativeModelId),
     );
-    const midPlan: MidConversationPlan | null = midConversationEnabled(mergedEnv)
+    const midPlan: MidConversationPlan | MidConversationSkip | null = midConversationEnabled(mergedEnv)
       ? planMidConversation({
           messages: context.messages,
           currentPrompt: systemPrompt,
@@ -418,6 +420,10 @@ async function executeCall(
       const stabilized = stabilizeNativeRequest(raw, queried);
       nativeContext = stabilized.report;
       if (!midPlan) return stabilized.body;
+      if (typeof midPlan === "string") {
+        midConversation = skippedReport(midPlan);
+        return stabilized.body;
+      }
       const rewritten = applyMidConversation(stabilized.body, midPlan);
       midConversation = rewritten.report;
       return rewritten.body;
