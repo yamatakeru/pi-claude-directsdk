@@ -197,7 +197,8 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
 
 // The CLI trims the newest tool result before appending its reminder.
 function sentStartsWith(sent: string, host: string, trimmed: boolean): boolean {
-  return sent.startsWith(host) || (trimmed && sent.startsWith(host.trim()));
+  const core = host.trim();
+  return sent.startsWith(host) || (trimmed && core !== "" && sent.startsWith(core));
 }
 
 function restoreDateLine(messages: Message[]): boolean {
