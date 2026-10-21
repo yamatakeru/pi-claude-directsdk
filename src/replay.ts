@@ -194,7 +194,13 @@ export function prepareHistory(
   };
 
   const assistantFramesBefore: number[] = [];
-  const countAssistants = (): number => frames.filter((frame) => frame.type === "assistant").length;
+  // The CLI drops assistant frames that hold only empty text.
+  const countAssistants = (): number =>
+    frames.filter(
+      (frame) =>
+        frame.type === "assistant" &&
+        frame.message.content.some((block) => block.type !== "text" || block.text !== ""),
+    ).length;
   for (const message of messages) {
     assistantFramesBefore.push(countAssistants());
     switch (message.role) {

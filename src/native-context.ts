@@ -111,7 +111,7 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
     if (typeof host === "string" || typeof sent === "string") {
       const left = joinedText(sent);
       const right = joinedText(host);
-      if (left === null || right === null || !left.startsWith(right)) return unmatched();
+      if (left === null || right === null || !sentStartsWith(left, right)) return unmatched();
       return deepClone(host);
     }
     if (Array.isArray(sent) && Array.isArray(host)) return restoreSequence(sent, host);
@@ -156,7 +156,7 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
         while (sentEnd < sent.length && isBareText(sent[sentEnd])) sentEnd++;
         const original = (host.slice(i, hostEnd) as Array<{ text: string }>).map((b) => b.text).join("");
         const actual = (sent.slice(j, sentEnd) as Array<{ text: string }>).map((b) => b.text).join("");
-        if (!(hostEnd === host.length ? actual.startsWith(original) : actual === original)) {
+        if (!(hostEnd === host.length ? sentStartsWith(actual, original) : actual === original)) {
           return unmatched();
         }
         restored.push(...deepClone(host.slice(i, hostEnd)));
@@ -190,6 +190,11 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
   if (deepEqual(native, restored)) return false;
   newest!.content = restored;
   return true;
+}
+
+// The CLI trims the queried result before appending its reminder.
+function sentStartsWith(sent: string, host: string): boolean {
+  return sent.startsWith(host) || sent.startsWith(host.trim());
 }
 
 function restoreDateLine(messages: Message[]): boolean {
