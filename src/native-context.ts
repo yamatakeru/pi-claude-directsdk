@@ -107,14 +107,15 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
     }
     return null;
   };
-  const restoreContent = (sent: unknown, host: unknown): unknown => {
+  const lastResult = queried.filter((block) => block["type"] === "tool_result").pop();
+  const restoreContent = (sent: unknown, host: unknown, trimmed: boolean): unknown => {
     if (typeof host === "string" || typeof sent === "string") {
       const left = joinedText(sent);
       const right = joinedText(host);
-      if (left === null || right === null || !left.startsWith(right)) return unmatched();
+      if (left === null || right === null || !sentStartsWith(left, right, trimmed)) return unmatched();
       return deepClone(host);
     }
-    if (Array.isArray(sent) && Array.isArray(host)) return restoreSequence(sent, host);
+    if (Array.isArray(sent) && Array.isArray(host)) return restoreSequence(sent, host, trimmed);
     return deepEqual(sent, host) ? deepClone(host) : unmatched();
   };
   const restoreBlock = (sent: unknown, host: unknown): Block => {
@@ -131,7 +132,9 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
         Object.fromEntries(Object.entries(block).filter(([key]) => !ignored.has(key)));
       if (!deepEqual(rest(sent), rest(host))) return unmatched();
       if (("content" in sent) !== ("content" in host)) return unmatched();
-      if ("content" in host) restored["content"] = restoreContent(sent["content"], host["content"]);
+      if ("content" in host) {
+        restored["content"] = restoreContent(sent["content"], host["content"], host === lastResult);
+      }
     } else if (!plainEqual(sent, host)) {
       return unmatched();
     }
@@ -143,7 +146,7 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
     }
     return restored;
   };
-  const restoreSequence = (sent: unknown[], host: unknown[]): unknown[] => {
+  const restoreSequence = (sent: unknown[], host: unknown[], trimmed = false): unknown[] => {
     const restored: unknown[] = [];
     let i = 0;
     let j = 0;
@@ -156,7 +159,7 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
         while (sentEnd < sent.length && isBareText(sent[sentEnd])) sentEnd++;
         const original = (host.slice(i, hostEnd) as Array<{ text: string }>).map((b) => b.text).join("");
         const actual = (sent.slice(j, sentEnd) as Array<{ text: string }>).map((b) => b.text).join("");
-        if (!(hostEnd === host.length ? actual.startsWith(original) : actual === original)) {
+        if (!(hostEnd === host.length ? sentStartsWith(actual, original, trimmed) : actual === original)) {
           return unmatched();
         }
         restored.push(...deepClone(host.slice(i, hostEnd)));
@@ -190,6 +193,12 @@ function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
   if (deepEqual(native, restored)) return false;
   newest!.content = restored;
   return true;
+}
+
+// The CLI trims the newest tool result before appending its reminder.
+function sentStartsWith(sent: string, host: string, trimmed: boolean): boolean {
+  const core = host.trim();
+  return sent.startsWith(host) || (trimmed && core !== "" && sent.startsWith(core));
 }
 
 function restoreDateLine(messages: Message[]): boolean {

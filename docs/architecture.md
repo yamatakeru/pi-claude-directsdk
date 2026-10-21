@@ -65,7 +65,7 @@ Every Pi model call replays history through a fresh child, and the CLI adds per-
 
 Before forwarding, the relay applies `stabilizeNativeRequest` to the admitted body. It restores one invariant: everything in request N up to its message breakpoint appears unchanged at the start of request N+1. Pi-owned content is identified structurally, as the final frame `prepareHistory` built. The CLI's wording is never matched, except for the exact date line.
 
-- Tool results: text the CLI appended to the queried tool results is removed, only when the ordered tool-use IDs anchor the whole frame.
+- Tool results: text the CLI appended to the queried tool results is removed, only when the ordered tool-use IDs anchor the whole frame. The CLI also trims surrounding whitespace from the newest tool result before appending, so Pi's original text is restored there too.
 - Later user turns: plain text the CLI placed before the queried frame is dropped, only when the frame occurs exactly once. A continuous native session carries this context once; per-call replay would otherwise repeat it on every call and replay it nowhere.
 - Opening request: that text is moved after the frame instead, so the opening turn is cached once.
 - The trailing date line returns to the end of the environment message, where the opening request had it.
@@ -87,7 +87,7 @@ With `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, the relay rewrites the admitted r
 - The tool list carries the initial tools, a deferred placeholder, and later tools with `defer_loading`.
 - Each later Pi system message is inserted before the next assistant message as a `role: system` message, carrying its rendered section changes and `tool_addition` / `tool_removal` references.
 
-The CLI still receives the collapsed prompt and every current tool, so the inert MCP server advertises all of them.
+The CLI still receives the collapsed prompt and every current tool, so the inert MCP server advertises all of them. Insertion points count replayed assistant frames, excluding ones that hold only empty text, because the CLI drops those.
 
 The request is forwarded collapsed, with the reason in the `midConversation` meta diagnostic, in these cases:
 
