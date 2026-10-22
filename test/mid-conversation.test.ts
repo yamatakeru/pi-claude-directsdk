@@ -7,11 +7,11 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Message, Tool } from "@earendil-works/pi-ai/compat";
 import {
-  applyMidConversation,
   midConversationEnabled,
   planMidConversation,
   type MidConversationPlan,
 } from "../src/mid-conversation.js";
+import { rewriteNativeRequest } from "../src/native-rewrite.js";
 import { encodeCarrier, messageProjection, prepareHistory } from "../src/replay.js";
 import { buildRequestBody, toolPrefixedName } from "../src/request.js";
 
@@ -83,7 +83,7 @@ test("#3 later changes become a system message before the next assistant turn", 
       ]),
     ),
   );
-  const { body, report } = applyMidConversation(raw, p);
+  const { body, midConversation: report } = rewriteNativeRequest(raw, [], p);
   assert.deepEqual(report, { applied: true, updates: 1, nativeToolChanges: true, skipped: null });
   const sent = JSON.parse(body.toString()) as Record<string, unknown>;
   assert.deepEqual(sent["system"], [
@@ -143,9 +143,9 @@ test("#3 fallbacks forward the collapsed body unchanged", () => {
   ];
   for (const [input, skipped] of cases) {
     const raw = Buffer.from(JSON.stringify(input));
-    const { body, report } = applyMidConversation(raw, p);
+    const { body, midConversation: report } = rewriteNativeRequest(raw, [], p);
     assert.equal(body, raw, skipped);
-    assert.equal(report.skipped, skipped);
+    assert.equal(report?.skipped, skipped);
   }
   assert.equal(plan(session.slice(1), "x", []), "transcript has no leading system message");
 });
