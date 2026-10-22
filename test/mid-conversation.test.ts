@@ -148,6 +148,11 @@ test("#3 fallbacks forward the collapsed body unchanged", () => {
     assert.equal(report?.skipped, skipped);
   }
   assert.equal(plan(session.slice(1), "x", []), "transcript has no leading system message");
+
+  const notMessages = Buffer.from(JSON.stringify({ messages: [] }));
+  assert.equal(rewriteNativeRequest(notMessages, [], p).midConversation?.skipped, "body is not a Messages request");
+  const notJson = Buffer.from("not json");
+  assert.equal(rewriteNativeRequest(notJson, [], p).midConversation?.skipped, "body is not a Messages request");
 });
 
 test("#13 replayed assistant frames holding only empty text are not counted", () => {

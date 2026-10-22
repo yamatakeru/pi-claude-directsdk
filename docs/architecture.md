@@ -91,6 +91,7 @@ The CLI still receives the collapsed prompt and every current tool, so the inert
 
 The request is forwarded collapsed, with the reason in the `midConversation` meta diagnostic, in these cases:
 
+- the admitted body is not a Messages request, or the rewrite fails unexpectedly;
 - the transcript has no leading system message, or the tool declarations cannot be built;
 - the route has no mid-conversation system messages (for example Haiku 4.5);
 - the collapsed prompt or tool list does not match exactly;

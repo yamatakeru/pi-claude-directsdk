@@ -45,6 +45,8 @@ export interface MidConversationPlan {
 }
 
 export type MidConversationSkip =
+  | "body is not a Messages request"
+  | "rewrite failed"
   | "transcript has no leading system message"
   | "tool declarations cannot be built"
   | "route has no mid-conversation system messages"
@@ -150,7 +152,7 @@ export function applyMidConversation(
   const system = body["system"];
   const tools = body["tools"] ?? [];
   if (!Array.isArray(messages) || !Array.isArray(system) || !Array.isArray(tools)) {
-    return report("leading prompt not uniquely matched");
+    return report("body is not a Messages request");
   }
   // Routes without the CLI's own mid-conversation system messages (e.g. Haiku 4.5).
   if (!messages.some((m) => isRecord(m) && m["role"] === "system")) {

@@ -45,7 +45,7 @@ export function rewriteNativeRequest(
       midConversation:
         midPlan === null
           ? null
-          : skippedReport(typeof midPlan === "string" ? midPlan : "leading prompt not uniquely matched"),
+          : skippedReport(typeof midPlan === "string" ? midPlan : "body is not a Messages request"),
     };
   }
 
@@ -55,7 +55,7 @@ export function rewriteNativeRequest(
   } catch {
     // A partial edit must not reach upstream: start again from the CLI's body.
     parsed = parse(raw)!;
-    nativeContext = { applied: [], skipped: ["body is not a Messages request"] };
+    nativeContext = { applied: [], skipped: ["rewrite failed"] };
   }
 
   let midConversation: MidConversationReport | null = null;
@@ -66,7 +66,7 @@ export function rewriteNativeRequest(
       midConversation = applyMidConversation(parsed, midPlan);
     } catch {
       // Every check runs before the first edit, so a throw leaves the body intact.
-      midConversation = skippedReport("leading prompt not uniquely matched");
+      midConversation = skippedReport("rewrite failed");
     }
   }
 
