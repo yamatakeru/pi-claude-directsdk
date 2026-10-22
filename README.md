@@ -3,15 +3,15 @@
 [![CI](https://github.com/yamatakeru/pi-claude-directsdk/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/yamatakeru/pi-claude-directsdk/actions/workflows/ci.yml?query=branch%3Amain)
 [![License](https://img.shields.io/github/license/yamatakeru/pi-claude-directsdk)](LICENSE)
 
-This is an unofficial fork of [joaomj/pi-claude-directsdk](https://github.com/joaomj/pi-claude-directsdk), used to verify fixes and try them in everyday Pi sessions before proposing them upstream. Fork changes are not necessarily accepted upstream. The npm package `pi-claude-directsdk` is the upstream distribution; it does not contain this fork's changes.
-
 Use Claude inside Pi, the coding agent, through the unmodified Claude Code executable. Pi owns the transcript, tools, approvals, and retries. The CLI supplies subscription authentication as a model transport.
+
+This is an unofficial fork of [joaomj/pi-claude-directsdk](https://github.com/joaomj/pi-claude-directsdk). It is where fixes are tried in everyday use before being reported upstream; see [Fork changes](#fork-changes). The npm package `pi-claude-directsdk` is upstream's and does not include them.
 
 ## Requirements
 
-- Pi 1.3.0 is verified in this fork; other Pi versions are unverified.
+- Pi. This fork is verified with Pi 1.3.0.
 - Node 20 or later for Node-based Pi installations and local development. Compiled Pi uses its bundled runtime.
-- Claude Code `>=2.1.263 <2.2.0` (the inherited compatibility range in `src/models.ts`). This fork was verified with 2.1.303, not every version in the range.
+- Claude Code `>=2.1.263 <2.2.0` (`QUALIFIED_CLI_RANGE` in `src/models.ts`). This fork is verified with 2.1.303.
 - A Claude paid plan. The free plan excludes the CLI.
 - A Claude Code login via `claude auth login`.
 
@@ -35,9 +35,9 @@ Install this fork from Git:
 pi install git:github.com/yamatakeru/pi-claude-directsdk
 ```
 
-This unpinned source installs the latest `main`, including changes without a release tag. To pin the code used in the post-#13 interactive verification below instead of following future changes, use `pi install git:github.com/yamatakeru/pi-claude-directsdk@1fa1c48` in place of the command above.
+This follows `main`. To stay on the last interactively verified commit instead, install `git:github.com/yamatakeru/pi-claude-directsdk@1fa1c48`.
 
-If upstream is already installed, first remove its declaration with `pi remove npm:pi-claude-directsdk` (or its Git source), or disable its extension loading. Only one DirectSDK extension should be active. `pi list` shows installed declarations.
+Keep only one DirectSDK extension active. If upstream is installed, remove it first with `pi remove npm:pi-claude-directsdk` (or its Git source); `pi list` shows what is installed.
 
 Start or restart interactive Pi, open `/model`, and wait for the DirectSDK catalog refresh. Select a DirectSDK model. On a fresh install, this step must complete before selecting the model from the command line.
 
@@ -49,7 +49,7 @@ pi --model claude-directsdk/claude-haiku-5-5
 
 DirectSDK uses the CLI login, not the Pi Anthropic login.
 
-The catalog does not guarantee account entitlement. Requests consume subscription allowance; some models require additional usage credits. To stay within the included allowance, disable additional paid usage in your Claude account.
+The catalog lists models, not what your plan includes. Start with Haiku for a small first request. Requests draw on your subscription allowance, and some models need additional usage credits; to avoid extra charges, disable additional paid usage in your Claude account.
 
 ## Upgrade
 
@@ -59,58 +59,50 @@ Update the fork explicitly:
 pi update git:github.com/yamatakeru/pi-claude-directsdk
 ```
 
-In Pi 1.3.0, bare `pi update` updates Pi itself, not its packages. An unpinned Git source tracks the repository's default branch; version-pinned sources remain pinned. To change a pin or switch back to upstream, remove the old declaration with `pi remove <old-source>`, then install the desired source. Keep only one DirectSDK extension active.
+In Pi 1.3.0, a bare `pi update` updates Pi itself, not its packages. Pinned sources stay pinned; to change a pin or switch back to upstream, `pi remove` the old source and install the new one.
 
 Restart Pi after upgrading, then open `/model` and wait for catalog refresh.
 
 ## Fork changes
 
-Relative to upstream baseline `e8c9108`, these additions are merged into the fork. The first three are enabled by default; the fourth is opt-in:
+Relative to upstream baseline `e8c9108`:
 
-- Replay-stable cache prefixes: remove recurring CLI-added context and restore trimmed tool results ([#1](https://github.com/yamatakeru/pi-claude-directsdk/issues/1), [#13](https://github.com/yamatakeru/pi-claude-directsdk/pull/13)).
-- Pi's thinking level passed through native `--effort`, without an inherited effort override ([#2](https://github.com/yamatakeru/pi-claude-directsdk/issues/2)).
-- Detailed relay failure diagnostics and termination when upstream drops mid-response ([#4](https://github.com/yamatakeru/pi-claude-directsdk/issues/4), [#7](https://github.com/yamatakeru/pi-claude-directsdk/issues/7)).
-- Experimental mid-conversation prompt/tool changes, **off by default** ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
+- **Cache reuse across calls** (default). Every call replays history through a fresh CLI process, and the CLI adds per-request context (a session reminder, the date line) that never recurs. The relay moves or drops that context, so each request's cached prefix is read by the next one ([#1](https://github.com/yamatakeru/pi-claude-directsdk/issues/1), [#13](https://github.com/yamatakeru/pi-claude-directsdk/pull/13)).
+- **Thinking level honoured** (default). Pi's thinking level reaches the CLI as `--effort`; an inherited `CLAUDE_CODE_EFFORT_LEVEL` no longer overrides it ([#2](https://github.com/yamatakeru/pi-claude-directsdk/issues/2)).
+- **Clearer relay failures** (default). Connection errors report codes, addresses and the failing phase instead of a bare `AggregateError`, and a connection dropped mid-response ends the call instead of hanging it ([#4](https://github.com/yamatakeru/pi-claude-directsdk/issues/4), [#7](https://github.com/yamatakeru/pi-claude-directsdk/issues/7)).
+- **Prompt and tool changes without a full cache miss** (experimental, opt-in). See below ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
 
-### Enable mid-conversation prompt/tool changes
+### Enabling prompt and tool changes mid-conversation
 
-Start each Pi process with:
+By default, when Pi's system prompt or tool list changes during a session, the next request starts with the new prompt and tools, so nothing cached can be reused. With the opt-in, the relay keeps the session's first prompt and tools in place and sends later changes as system messages inside the conversation, the way Pi's own Anthropic provider does.
+
+Start Pi with the variable set, or export it in your launcher's environment:
 
 ```sh
 PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1 pi
 ```
 
-Or export the variable in the environment used by your Pi launcher. Installing this fork alone does **not** enable this feature. It currently has no Pi settings-file switch; a persistent configuration path is being [considered](https://github.com/yamatakeru/pi-claude-directsdk/issues/14).
+Installing the fork does not enable it, and there is no settings-file switch yet ([#14](https://github.com/yamatakeru/pi-claude-directsdk/issues/14)). When the relay cannot apply the rewrite, it forwards the request in the default form and records why in the `midConversation` diagnostic. Some models, such as Haiku 4.5, always use the default form. Details are in [architecture](docs/architecture.md#mid-conversation-system-messages-srcmid-conversationts).
 
-The relay keeps the initial prompt and tools stable and inserts later changes as system messages with deferred tool references. This is an explicit opt-in departure from forwarding the current prompt/tool list unchanged. `midConversation` in message diagnostics records whether the rewrite applied and any skip reason. See [architecture](docs/architecture.md#mid-conversation-system-messages-srcmid-conversationts) for the rewrite and fallbacks.
+### Known issues
 
-Limitations:
+- Changing the thinking level mid-session still causes a near-full cache miss ([#5](https://github.com/yamatakeru/pi-claude-directsdk/issues/5)).
+- After a long tool loop with thinking, the next user turn may miss part of the cache; under investigation ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)).
 
-- Routes without mid-conversation system messages, such as Haiku 4.5, retain collapsed requests.
-- A tool name redefined anywhere in the replayed transcript disables native tool changes for that history; the current full tool list is sent instead. Section updates can still apply.
-- Thinking-level changes can still cause a cache miss ([#5](https://github.com/yamatakeru/pi-claude-directsdk/issues/5)). Long thinking/tool-loop misses remain under investigation ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)).
+### Verification
 
-### Fork verification
+With Pi 1.3.0, Claude Code 2.1.303 and Haiku 5.5, the second and third requests of a warm run read 98.69% and 99.79% of their input from cache. With the opt-in enabled, a prompt change and an added tool kept the cached prefix, and the model called the new tool. Interactive sessions with Haiku 5.5 and Sonnet 5.5 stayed near 99% after tool loops. The measurement report has the full numbers and limits for the [warm run](docs/transport-measurements.md#replay-stable-native-context), the [opt-in](docs/transport-measurements.md#mid-conversation-system-messages-experimental) and the [interactive sessions](docs/transport-measurements.md#interactive-sessions-after-the-trimmed-result-fix).
 
-Live subscription checks used Pi 1.3.0 and Claude Code 2.1.303:
-
-| Check | Opt-in | Result |
-|---|---|---|
-| Three-request Haiku 5.5 warm run | Not required | Requests 2 and 3 read 98.69% and 99.79% from cache |
-| Haiku 5.5 section change and tool addition | Enabled | Cached prefix preserved; model called the added tool |
-| Two fresh interactive sessions at `1fa1c48`, 31 requests total | Enabled | No restoration skips or rewrite fallbacks; next turn after 12 Haiku 5.5 / 10 Sonnet 5.5 tool calls read 99.4% / 99.0% from cache, respectively |
-
-The last check used Herdr, a terminal multiplexer. It did not reproduce #10, but short-session checks do not rule it out or extend the permanent test harness. The [measurement report](docs/transport-measurements.md) details earlier checks and separately preserves upstream's v0.1.7 results.
-
-Every call still sends history and starts a fresh Claude process. Cache reuse depends on inputs, lifetime, and upstream availability; these are not matched upstream/fork benchmarks. Cache-read share measures token reuse, not subscription allowance deductions or guaranteed savings.
-
-Pi's per-model costs are estimates from [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), not subscription charges. Failed or interrupted requests are never reported as free.
+Cache-read share measures token reuse, not subscription allowance. Pi's per-model costs are estimates from [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), not subscription charges, and failed or interrupted requests are never reported as free.
 
 ## Comparison with pi-claude-bridge
 
-Unlike [pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge), DirectSDK starts a fresh CLI process for each call and keeps no mirrored Claude session. Pi owns the transcript; at most one upstream Messages request is admitted per call. By default, system messages collapse into the current prompt; the fork's opt-in rewrite places later changes inline instead.
+[pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) also exposes Claude as a Pi provider and lets Pi execute tools.
 
-There is no matched speed benchmark or implied Anthropic approval. See the [full comparison](docs/comparison.md) for trade-offs, evidence, and subscription-policy limits.
+- **DirectSDK:** Pi's current transcript and prompt determine each request. A fresh CLI process admits at most one upstream Messages request, with no mirrored Claude session. The trade-off is repeated process startup and history replay, plus custom transport maintenance.
+- **Bridge:** Uses the official Agent SDK, continues queries across Pi tool boundaries, and offers optional Claude-agent delegation. The trade-off is mirrored-session recovery and a Claude Code instruction environment rather than direct forwarding of Pi's full system prompt.
+
+No matched benchmark compares their speed, and using the official CLI or SDK does not imply Anthropic approval of either. See the [full comparison](docs/comparison.md).
 
 ## Documentation
 
@@ -118,17 +110,15 @@ There is no matched speed benchmark or implied Anthropic approval. See the [full
 - [Architecture](docs/architecture.md): request lifecycle diagram, model routing, tool transport, and admission relay.
 - [Startup](docs/startup.md): catalog refresh, cache-only initialization, and lazy loading.
 - [Troubleshooting](docs/troubleshooting.md): missing CLI, login, and conflicting environment settings.
-- [Testing](docs/testing.md): supported verification commands and upstream environment baselines. Fork-specific paid checks are summarized [above](#fork-verification); temporary checks do not extend the permanent harness.
+- [Testing](docs/testing.md): verification commands and upstream's verified environments. Fork checks are summarized under [Verification](#verification).
 - [Transport measurements](docs/transport-measurements.md): timing baseline, warm-cache reuse, and measurement limits.
 - [Full Bridge comparison](docs/comparison.md): transport, state, caching, authentication, and policy trade-offs.
 
 ## Issues and security
 
-Report non-security fork-specific bugs and suggestions in [this fork's issues](https://github.com/yamatakeru/pi-claude-directsdk/issues).
+Report fork-specific bugs and suggestions in [this fork's issues](https://github.com/yamatakeru/pi-claude-directsdk/issues). Upstream takes issues but not unsolicited pull requests ([CONTRIBUTING.md](CONTRIBUTING.md)), so fixes found here are proposed there as issues with reproduction evidence.
 
-Upstream accepts issues, not unsolicited PRs. Propose fixes through upstream issues with reproduction evidence and implementation links, distinguishing fork changes from upstream behaviour. [CONTRIBUTING.md](CONTRIBUTING.md) describes upstream's policy.
-
-This fork has no configured private vulnerability-reporting channel. Do not disclose vulnerabilities or credentials in public issues. [SECURITY.md](SECURITY.md) documents upstream's private channel for upstream code only, not fork-only vulnerabilities.
+This fork has no private vulnerability-reporting channel; please do not post vulnerabilities or credentials in public issues. [SECURITY.md](SECURITY.md) describes upstream's channel, which covers upstream code only.
 
 ## Acknowledgments
 
