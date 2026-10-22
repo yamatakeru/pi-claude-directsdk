@@ -91,7 +91,7 @@ Installing the fork does not enable it, and there is no settings-file switch yet
 
 ### Verification
 
-With Pi 1.3.0, Claude Code 2.1.303 and Haiku 5.5, the second and third requests of a warm run read 98.69% and 99.79% of their input from cache. With the opt-in enabled, a prompt change and an added tool kept the cached prefix, and the model called the new tool. Interactive sessions with Haiku 5.5 and Sonnet 5.5 stayed near 99% after tool loops. The [measurement report](docs/transport-measurements.md#replay-stable-native-context) has the full numbers and their limits.
+With Pi 1.3.0, Claude Code 2.1.303 and Haiku 5.5, the second and third requests of a warm run read 98.69% and 99.79% of their input from cache. With the opt-in enabled, a prompt change and an added tool kept the cached prefix, and the model called the new tool. Interactive sessions with Haiku 5.5 and Sonnet 5.5 stayed near 99% after tool loops. The measurement report has the full numbers and limits for the [warm run](docs/transport-measurements.md#replay-stable-native-context), the [opt-in](docs/transport-measurements.md#mid-conversation-system-messages-experimental) and the [interactive sessions](docs/transport-measurements.md#interactive-sessions-after-the-trimmed-result-fix).
 
 Cache-read share measures token reuse, not subscription allowance. Pi's per-model costs are estimates from [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), not subscription charges, and failed or interrupted requests are never reported as free.
 
