@@ -102,9 +102,10 @@ The observer records real Claude process starts, replay acknowledgments, termina
 ```sh
 npm run check
 npm run build
+npm run test:unit
 ```
 
-These commands check types and compilation, not runtime behavior. Branch, pull request, and release CI run those checks. Runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
+`check` and `build` cover types and compilation. `test:unit` runs offline fixture tests (`test/`) with `node:test` for the fork's request rewrites and relay failure handling, grouped by fork issue; each test fails when its fix is reverted. The fixtures reproduce request shapes observed from Claude Code 2.1.303 and use only loopback upstreams. Branch and pull request CI run all three. Runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
 
 The permanent harness does not yet exercise an in-process `/reload`, forced subprocess stalls, cancellation, or an explicit tool round trip. Temporary checks described above do not extend the supported scenarios.
 

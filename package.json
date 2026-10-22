@@ -50,6 +50,7 @@
   "scripts": {
     "check": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "python3 scripts/verify.py startup"
+    "test": "python3 scripts/verify.py startup",
+    "test:unit": "rm -rf .build/test && tsc -p tsconfig.test.json && node --test --test-timeout=20000 '.build/test/test/*.test.js'"
   }
 }
