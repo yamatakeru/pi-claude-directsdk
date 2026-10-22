@@ -362,7 +362,7 @@ export class AdmissionRelay {
     this.url = "";
   }
 
-  /** Bind the relay. `prepareBody` is the only payload hook (`src/native-context.ts`). */
+  /** Bind the relay. `prepareBody` is the only payload hook (`src/native-rewrite.ts`). */
   static async create(
     upstream: string,
     timeoutMs: number,

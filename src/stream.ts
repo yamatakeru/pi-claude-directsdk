@@ -49,17 +49,16 @@ import {
   upstreamError,
 } from "./errors.js";
 import { PROVIDER_ID, QUALIFIED_CLI_RANGE, nativeModel } from "./models.js";
-import { NativeContextReport, stabilizeNativeRequest } from "./native-context.js";
+import type { NativeContextReport } from "./native-context.js";
 import {
   MidConversationPlan,
   MidConversationReport,
   MidConversationSkip,
   MID_CONVERSATION_ENV,
-  applyMidConversation,
-  skippedReport,
   midConversationEnabled,
   planMidConversation,
 } from "./mid-conversation.js";
+import { rewriteNativeRequest } from "./native-rewrite.js";
 import {
   encodeCarrier,
   messageProjection,
@@ -417,16 +416,10 @@ async function executeCall(
     // The final frame is exactly what Pi queried.
     const queried = frames[frames.length - 1]?.message.content ?? [];
     relay = await deps.createRelay(upstream, timeoutMs, (raw) => {
-      const stabilized = stabilizeNativeRequest(raw, queried);
-      nativeContext = stabilized.report;
-      if (!midPlan) return stabilized.body;
-      if (typeof midPlan === "string") {
-        midConversation = skippedReport(midPlan);
-        return stabilized.body;
-      }
-      const rewritten = applyMidConversation(stabilized.body, midPlan);
-      midConversation = rewritten.report;
-      return rewritten.body;
+      const rewrite = rewriteNativeRequest(raw, queried, midPlan);
+      nativeContext = rewrite.nativeContext;
+      midConversation = rewrite.midConversation;
+      return rewrite.body;
     });
     const activeRelay = relay;
     // Stashed at header time, invoked after the response completes and

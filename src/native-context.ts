@@ -319,41 +319,33 @@ function pinBreakpoint(messages: Message[], queried: Block[]): boolean {
   return true;
 }
 
-/** Pure and non-throwing; returns the original buffer when nothing changed. */
+/**
+ * Stabilize a parsed Messages request in place. Steps that do not match
+ * exactly leave the body as the CLI built it; the report lists what applied.
+ */
 export function stabilizeNativeRequest(
-  body: Buffer,
+  body: Record<string, unknown>,
   queried: readonly NativeContentBlock[],
-): { body: Buffer; report: NativeContextReport } {
+): NativeContextReport {
   const report: NativeContextReport = { applied: [], skipped: [] };
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(body.toString("utf-8"));
-  } catch {
-    parsed = undefined;
-  }
-  const messages = isRecord(parsed) ? parsed["messages"] : undefined;
+  const messages = body["messages"];
   const frame = queried.filter(isRecord) as Block[];
   if (!wellFormed(messages) || frame.length === 0 || frame.length !== queried.length) {
     report.skipped.push("body is not a Messages request");
-    return { body, report };
+    return report;
   }
   try {
-    try {
-      if (restoreQueriedTurn(messages, frame)) report.applied.push("toolResultRestored");
-    } catch (error) {
-      if (!(error instanceof QueriedTurnMismatch)) throw error;
-      report.skipped.push("queried tool results not uniquely matched");
-    }
-    if (restoreDateLine(messages)) report.applied.push("dateLineRestored");
-    if (dropReminder(messages, frame)) report.applied.push("reminderDropped");
-    const hasMarks = messages.some(
-      (m) => Array.isArray(m.content) && m.content.some((b) => isRecord(b) && "cache_control" in b),
-    );
-    if (hasMarks && frameFirst(messages, frame)) report.applied.push("openingReordered");
-    if (pinBreakpoint(messages, frame)) report.applied.push("breakpointPinned");
-  } catch {
-    return { body, report: { applied: [], skipped: ["body is not a Messages request"] } };
+    if (restoreQueriedTurn(messages, frame)) report.applied.push("toolResultRestored");
+  } catch (error) {
+    if (!(error instanceof QueriedTurnMismatch)) throw error;
+    report.skipped.push("queried tool results not uniquely matched");
   }
-  if (report.applied.length === 0) return { body, report };
-  return { body: Buffer.from(JSON.stringify(parsed), "utf-8"), report };
+  if (restoreDateLine(messages)) report.applied.push("dateLineRestored");
+  if (dropReminder(messages, frame)) report.applied.push("reminderDropped");
+  const hasMarks = messages.some(
+    (m) => Array.isArray(m.content) && m.content.some((b) => isRecord(b) && "cache_control" in b),
+  );
+  if (hasMarks && frameFirst(messages, frame)) report.applied.push("openingReordered");
+  if (pinBreakpoint(messages, frame)) report.applied.push("breakpointPinned");
+  return report;
 }

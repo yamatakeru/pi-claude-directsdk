@@ -6,7 +6,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { stabilizeNativeRequest } from "../src/native-context.js";
+import { rewriteNativeRequest } from "../src/native-rewrite.js";
 import type { NativeContentBlock } from "../src/types.js";
 
 const CC = { type: "ephemeral", ttl: "1h" } as const;
@@ -15,7 +15,8 @@ const DATE = "Today's date is 2026-10-22.";
 
 function run(body: unknown, queried: NativeContentBlock[]) {
   const raw = Buffer.from(JSON.stringify(body));
-  const result = stabilizeNativeRequest(raw, queried);
+  const rewrite = rewriteNativeRequest(raw, queried, null);
+  const result = { body: rewrite.body, report: rewrite.nativeContext };
   return { raw, result, body: JSON.parse(result.body.toString()) as Record<string, unknown> };
 }
 
@@ -226,7 +227,8 @@ test("#1 a later marker moves onto the last replay-stable block", () => {
 
 test("#1 a non-Messages body is forwarded unchanged", () => {
   const raw = Buffer.from("not json");
-  const result = stabilizeNativeRequest(raw, [{ type: "text", text: "x" }]);
+  const result = rewriteNativeRequest(raw, [{ type: "text", text: "x" }], null);
   assert.equal(result.body, raw);
-  assert.deepEqual(result.report, { applied: [], skipped: ["body is not a Messages request"] });
+  assert.deepEqual(result.nativeContext, { applied: [], skipped: ["body is not a Messages request"] });
+  assert.equal(result.midConversation, null);
 });

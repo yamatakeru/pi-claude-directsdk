@@ -140,23 +140,11 @@ export function planMidConversation(options: {
   };
 }
 
-/** Apply the plan to a native request body; returns the original buffer unless applied. */
+/** Apply the plan to a parsed native request in place, only when every check matches. */
 export function applyMidConversation(
-  raw: Buffer,
+  body: Record<string, unknown>,
   plan: MidConversationPlan,
-): { body: Buffer; report: MidConversationReport } {
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(raw.toString("utf-8"));
-  } catch {
-    parsed = undefined;
-  }
-  if (!isRecord(parsed)) return { body: raw, report: skippedReport("leading prompt not uniquely matched") };
-  const report = rewrite(parsed, plan);
-  return { body: report.applied ? Buffer.from(JSON.stringify(parsed), "utf-8") : raw, report };
-}
-
-function rewrite(body: Record<string, unknown>, plan: MidConversationPlan): MidConversationReport {
+): MidConversationReport {
   const report = skippedReport;
   const messages = body["messages"];
   const system = body["system"];
