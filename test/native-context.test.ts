@@ -232,3 +232,10 @@ test("#1 a non-Messages body is forwarded unchanged", () => {
   assert.deepEqual(result.nativeContext, { applied: [], skipped: ["body is not a Messages request"] });
   assert.equal(result.midConversation, null);
 });
+
+test("#1 an empty queried frame is reported as such", () => {
+  const raw = Buffer.from(JSON.stringify({ messages: [] }));
+  const result = rewriteNativeRequest(raw, [], null);
+  assert.equal(result.body, raw);
+  assert.deepEqual(result.nativeContext, { applied: [], skipped: ["queried frame is empty"] });
+});

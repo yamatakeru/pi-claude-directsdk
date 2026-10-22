@@ -23,7 +23,9 @@ export type NativeContextStep =
 
 export type NativeContextSkip =
   | "body is not a Messages request"
-  | "queried tool results not uniquely matched";
+  | "queried frame is empty"
+  | "queried tool results not uniquely matched"
+  | "rewrite failed";
 
 /** Meta diagnostic outcome; never carries content. */
 export interface NativeContextReport {
@@ -363,8 +365,12 @@ export function stabilizeNativeRequest(
   const report: NativeContextReport = { applied: [], skipped: [] };
   const messages = body["messages"];
   const frame = queried.filter(isRecord) as Block[];
-  if (!wellFormed(messages) || frame.length === 0 || frame.length !== queried.length) {
+  if (!wellFormed(messages)) {
     report.skipped.push("body is not a Messages request");
+    return report;
+  }
+  if (frame.length === 0 || frame.length !== queried.length) {
+    report.skipped.push("queried frame is empty");
     return report;
   }
   const toolResults = restoreQueriedTurn(messages, frame);
