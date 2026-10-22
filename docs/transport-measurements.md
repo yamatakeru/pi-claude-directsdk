@@ -142,6 +142,12 @@ Three approved paid requests went through the provider path with `claude-haiku-5
 
 The added tool was declared with `defer_loading` and activated by `tool_addition`; the model called it through the inert MCP server. Each request admitted one upstream request. Opus 5.5 and Sonnet 5.5 produced the same request shape in the loopback capture, but only Haiku 5.5 was measured on the subscription route.
 
+### Interactive sessions after the trimmed-result fix
+
+At commit `1fa1c48`, two fresh interactive Pi 1.3.0 sessions ran with the mid-conversation opt-in enabled and Claude Code 2.1.303, driven through the Herdr terminal multiplexer. Across 31 requests, `nativeContext` reported no skipped restoration and `midConversation` reported no fallback. The first user turn after a tool loop read 99.4% from cache after 12 Haiku 5.5 tool calls, and 99.0% after 10 Sonnet 5.5 tool calls.
+
+These sessions did not reproduce the long thinking/tool-loop miss ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)), but they were too short to rule it out. They were one-off checks and are not part of the permanent harness.
+
 ### Paid verification of the repair
 
 Three approved requests ran sequentially through one Pi RPC process with the historical anchor and shared connection pools enabled. All three succeeded, each admitted one upstream request, and the process produced no stderr. Auto-retry and auto-compaction remained disabled.
