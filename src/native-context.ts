@@ -35,8 +35,6 @@ const UNCACHEABLE = new Set(["thinking", "redacted_thinking"]);
 // The only CLI text matched by wording; anything looser could move varying text.
 const DATE_LINE = /^Today's date is \d{4}-\d{2}-\d{2}\.$/;
 
-class QueriedTurnMismatch extends Error {}
-
 function plain(block: unknown): unknown {
   if (!isRecord(block)) return block;
   const { cache_control: _ignored, ...rest } = block;
@@ -94,111 +92,146 @@ function wellFormed(messages: unknown): messages is Message[] {
   );
 }
 
-/** Strip trailing CLI text from the queried tool results; throws on mismatch. */
-function restoreQueriedTurn(messages: Message[], queried: Block[]): boolean {
-  if (!queried.some((block) => block["type"] === "tool_result")) return false;
-  const unmatched = (): never => {
-    throw new QueriedTurnMismatch();
-  };
-  const joinedText = (value: unknown): string | null => {
-    if (typeof value === "string") return value;
-    if (Array.isArray(value) && value.every(isBareText)) {
-      return value.map((block) => block.text).join("");
-    }
-    return null;
-  };
-  const lastResult = queried.filter((block) => block["type"] === "tool_result").pop();
-  const restoreContent = (sent: unknown, host: unknown, trimmed: boolean): unknown => {
-    if (typeof host === "string" || typeof sent === "string") {
-      const left = joinedText(sent);
-      const right = joinedText(host);
-      if (left === null || right === null || !sentStartsWith(left, right, trimmed)) return unmatched();
-      return deepClone(host);
-    }
-    if (Array.isArray(sent) && Array.isArray(host)) return restoreSequence(sent, host, trimmed);
-    return deepEqual(sent, host) ? deepClone(host) : unmatched();
-  };
-  const restoreBlock = (sent: unknown, host: unknown): Block => {
-    if (!isRecord(sent) || !isRecord(host)) return unmatched();
-    const restored = deepClone(host);
-    if (host["type"] === "tool_result") {
-      const sentError = sent["is_error"] ?? false;
-      const hostError = host["is_error"] ?? false;
-      if (typeof sentError !== "boolean" || typeof hostError !== "boolean" || sentError !== hostError) {
-        return unmatched();
-      }
-      const ignored = new Set(["content", "is_error", "cache_control"]);
-      const rest = (block: Block): Block =>
-        Object.fromEntries(Object.entries(block).filter(([key]) => !ignored.has(key)));
-      if (!deepEqual(rest(sent), rest(host))) return unmatched();
-      if (("content" in sent) !== ("content" in host)) return unmatched();
-      if ("content" in host) {
-        restored["content"] = restoreContent(sent["content"], host["content"], host === lastResult);
-      }
-    } else if (!plainEqual(sent, host)) {
-      return unmatched();
-    }
-    if ("cache_control" in sent) {
-      if ("cache_control" in host && !deepEqual(sent["cache_control"], host["cache_control"])) {
-        return unmatched();
-      }
-      restored["cache_control"] = deepClone(sent["cache_control"]);
-    }
-    return restored;
-  };
-  const restoreSequence = (sent: unknown[], host: unknown[], trimmed = false): unknown[] => {
-    const restored: unknown[] = [];
-    let i = 0;
-    let j = 0;
-    while (i < host.length) {
-      if (j >= sent.length) return unmatched();
-      if (isBareText(host[i]) && isBareText(sent[j])) {
-        let hostEnd = i + 1;
-        let sentEnd = j + 1;
-        while (hostEnd < host.length && isBareText(host[hostEnd])) hostEnd++;
-        while (sentEnd < sent.length && isBareText(sent[sentEnd])) sentEnd++;
-        const original = (host.slice(i, hostEnd) as Array<{ text: string }>).map((b) => b.text).join("");
-        const actual = (sent.slice(j, sentEnd) as Array<{ text: string }>).map((b) => b.text).join("");
-        if (!(hostEnd === host.length ? sentStartsWith(actual, original, trimmed) : actual === original)) {
-          return unmatched();
-        }
-        restored.push(...deepClone(host.slice(i, hostEnd)));
-        i = hostEnd;
-        j = sentEnd;
-      } else {
-        restored.push(restoreBlock(sent[j], host[i]));
-        i++;
-        j++;
-      }
-    }
-    if (sent.slice(j).some((block) => !isBareText(block))) return unmatched();
-    return restored;
-  };
+/** Result of a restoration step that did not match exactly. */
+const MISMATCH = Symbol("mismatch");
+type Restored<T> = T | typeof MISMATCH;
 
-  const newest = messages[lastAssistant(messages) + 1];
-  const native = newest?.role === "user" ? newest.content : undefined;
-  if (!Array.isArray(native)) return unmatched();
-  const hostIds = queried.filter((b) => b["type"] === "tool_result").map((b) => b["tool_use_id"]);
-  if (
-    hostIds.some((id) => typeof id !== "string" || !id) ||
-    new Set(hostIds).size !== hostIds.length
-  ) {
-    return unmatched();
-  }
-  const nativeIds = native
-    .filter((b) => blockType(b) === "tool_result")
-    .map((b) => (b as Block)["tool_use_id"]);
-  if (!deepEqual(hostIds, nativeIds)) return unmatched();
-  const restored = restoreSequence(native, queried);
-  if (deepEqual(native, restored)) return false;
-  newest!.content = restored;
-  return true;
+function bareTexts(blocks: unknown[]): string {
+  return (blocks as Array<{ text: string }>).map((block) => block.text).join("");
+}
+
+function joinedText(value: unknown): string | null {
+  if (typeof value === "string") return value;
+  if (Array.isArray(value) && value.every(isBareText)) return bareTexts(value);
+  return null;
 }
 
 // The CLI trims the newest tool result before appending its reminder.
 function sentStartsWith(sent: string, host: string, trimmed: boolean): boolean {
   const core = host.trim();
   return sent.startsWith(host) || (trimmed && core !== "" && sent.startsWith(core));
+}
+
+/**
+ * Match the blocks the CLI sent against the blocks Pi queried and return Pi's
+ * blocks with the CLI's markers. Runs of bare text are compared as one string;
+ * the final run may carry appended CLI text, and trailing bare text is dropped.
+ * `trimmed` allows the final run to match Pi's text without its surrounding
+ * whitespace; `newest` is the queried tool result whose content allows it.
+ */
+function restoreSequence(
+  sent: unknown[],
+  host: unknown[],
+  newest: Block | undefined,
+  trimmed = false,
+): Restored<unknown[]> {
+  const restored: unknown[] = [];
+  let i = 0;
+  let j = 0;
+  while (i < host.length) {
+    if (j >= sent.length) return MISMATCH;
+    if (isBareText(host[i]) && isBareText(sent[j])) {
+      let hostEnd = i + 1;
+      let sentEnd = j + 1;
+      while (hostEnd < host.length && isBareText(host[hostEnd])) hostEnd++;
+      while (sentEnd < sent.length && isBareText(sent[sentEnd])) sentEnd++;
+      const original = bareTexts(host.slice(i, hostEnd));
+      const actual = bareTexts(sent.slice(j, sentEnd));
+      const final = hostEnd === host.length;
+      if (!(final ? sentStartsWith(actual, original, trimmed) : actual === original)) return MISMATCH;
+      restored.push(...deepClone(host.slice(i, hostEnd)));
+      i = hostEnd;
+      j = sentEnd;
+    } else {
+      const block = restoreBlock(sent[j], host[i], newest);
+      if (block === MISMATCH) return MISMATCH;
+      restored.push(block);
+      i++;
+      j++;
+    }
+  }
+  if (sent.slice(j).some((block) => !isBareText(block))) return MISMATCH;
+  return restored;
+}
+
+const TOOL_RESULT_COMPARED_SEPARATELY = new Set(["content", "is_error", "cache_control"]);
+
+/** One non-text block: Pi's block, with the CLI's marker if it placed one. */
+function restoreBlock(sent: unknown, host: unknown, newest: Block | undefined): Restored<Block> {
+  if (!isRecord(sent) || !isRecord(host)) return MISMATCH;
+  const restored = deepClone(host);
+  if (host["type"] === "tool_result") {
+    const sentError = sent["is_error"] ?? false;
+    const hostError = host["is_error"] ?? false;
+    if (typeof sentError !== "boolean" || typeof hostError !== "boolean" || sentError !== hostError) {
+      return MISMATCH;
+    }
+    const rest = (block: Block): Block =>
+      Object.fromEntries(
+        Object.entries(block).filter(([key]) => !TOOL_RESULT_COMPARED_SEPARATELY.has(key)),
+      );
+    if (!deepEqual(rest(sent), rest(host))) return MISMATCH;
+    if (("content" in sent) !== ("content" in host)) return MISMATCH;
+    if ("content" in host) {
+      const content = restoreContent(sent["content"], host["content"], newest, host === newest);
+      if (content === MISMATCH) return MISMATCH;
+      restored["content"] = content;
+    }
+  } else if (!plainEqual(sent, host)) {
+    return MISMATCH;
+  }
+  if ("cache_control" in sent) {
+    if ("cache_control" in host && !deepEqual(sent["cache_control"], host["cache_control"])) {
+      return MISMATCH;
+    }
+    restored["cache_control"] = deepClone(sent["cache_control"]);
+  }
+  return restored;
+}
+
+/** Tool-result content, which the CLI may send as a string or as blocks. */
+function restoreContent(
+  sent: unknown,
+  host: unknown,
+  newest: Block | undefined,
+  trimmed: boolean,
+): Restored<unknown> {
+  if (typeof host === "string" || typeof sent === "string") {
+    const left = joinedText(sent);
+    const right = joinedText(host);
+    if (left === null || right === null || !sentStartsWith(left, right, trimmed)) return MISMATCH;
+    return deepClone(host);
+  }
+  if (Array.isArray(sent) && Array.isArray(host)) return restoreSequence(sent, host, newest, trimmed);
+  return deepEqual(sent, host) ? deepClone(host) : MISMATCH;
+}
+
+/**
+ * Strip CLI text appended to the queried tool results. Applies only when the
+ * ordered tool-use IDs anchor the whole frame.
+ */
+function restoreQueriedTurn(
+  messages: Message[],
+  queried: Block[],
+): "restored" | "unchanged" | "unmatched" {
+  const results = queried.filter((block) => block["type"] === "tool_result");
+  if (results.length === 0) return "unchanged";
+  const newest = messages[lastAssistant(messages) + 1];
+  const native = newest?.role === "user" ? newest.content : undefined;
+  if (!Array.isArray(native)) return "unmatched";
+  const hostIds = results.map((block) => block["tool_use_id"]);
+  if (hostIds.some((id) => typeof id !== "string" || !id) || new Set(hostIds).size !== hostIds.length) {
+    return "unmatched";
+  }
+  const nativeIds = native
+    .filter((block) => blockType(block) === "tool_result")
+    .map((block) => (block as Block)["tool_use_id"]);
+  if (!deepEqual(hostIds, nativeIds)) return "unmatched";
+  const restored = restoreSequence(native, queried, results[results.length - 1]);
+  if (restored === MISMATCH) return "unmatched";
+  if (deepEqual(native, restored)) return "unchanged";
+  newest!.content = restored;
+  return "restored";
 }
 
 function restoreDateLine(messages: Message[]): boolean {
@@ -334,12 +367,9 @@ export function stabilizeNativeRequest(
     report.skipped.push("body is not a Messages request");
     return report;
   }
-  try {
-    if (restoreQueriedTurn(messages, frame)) report.applied.push("toolResultRestored");
-  } catch (error) {
-    if (!(error instanceof QueriedTurnMismatch)) throw error;
-    report.skipped.push("queried tool results not uniquely matched");
-  }
+  const toolResults = restoreQueriedTurn(messages, frame);
+  if (toolResults === "restored") report.applied.push("toolResultRestored");
+  if (toolResults === "unmatched") report.skipped.push("queried tool results not uniquely matched");
   if (restoreDateLine(messages)) report.applied.push("dateLineRestored");
   if (dropReminder(messages, frame)) report.applied.push("reminderDropped");
   const hasMarks = messages.some(
