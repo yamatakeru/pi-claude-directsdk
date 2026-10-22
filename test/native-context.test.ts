@@ -225,6 +225,33 @@ test("#1 a later marker moves onto the last replay-stable block", () => {
   ]);
 });
 
+test("#1 several later markers fold into one on the replay-stable block", () => {
+  const other = { type: "ephemeral", ttl: "5m" } as const;
+  const { result, body } = run(
+    {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "hello" }] },
+        { role: "assistant", content: [{ type: "text", text: "hi" }] },
+        {
+          role: "user",
+          content: [
+            { type: "text", text: "next" },
+            { type: "text", text: REMINDER, cache_control: CC },
+            { type: "text", text: "more CLI text", cache_control: other },
+          ],
+        },
+      ],
+    },
+    [{ type: "text", text: "next" }],
+  );
+  assert.deepEqual(result.report.applied, ["breakpointPinned"]);
+  assert.deepEqual((body["messages"] as Array<{ content: unknown }>)[2]?.content, [
+    { type: "text", text: "next", cache_control: CC },
+    { type: "text", text: REMINDER },
+    { type: "text", text: "more CLI text" },
+  ]);
+});
+
 test("#1 a non-Messages body is forwarded unchanged", () => {
   const raw = Buffer.from("not json");
   const result = rewriteNativeRequest(raw, [{ type: "text", text: "x" }], null);

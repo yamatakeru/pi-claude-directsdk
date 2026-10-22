@@ -73,8 +73,10 @@ export function midConversationEnabled(env: NodeJS.ProcessEnv): boolean {
 }
 
 /**
- * Build the plan from Pi's transcript. `assistantFramesBefore[i]` is the number
- * of replayed assistant frames before non-system history message `i`.
+ * Build the plan from Pi's transcript. `assistantFramesBefore` comes from
+ * `prepareHistory` on the same transcript without its system messages: entry
+ * `i` counts the replayed assistant frames before non-system message `i`, so
+ * walking `messages` and skipping system messages yields the same index.
  */
 export function planMidConversation(options: {
   messages: readonly Message[];
@@ -147,31 +149,30 @@ export function applyMidConversation(
   body: Record<string, unknown>,
   plan: MidConversationPlan,
 ): MidConversationReport {
-  const report = skippedReport;
   const messages = body["messages"];
   const system = body["system"];
   const tools = body["tools"] ?? [];
   if (!Array.isArray(messages) || !Array.isArray(system) || !Array.isArray(tools)) {
-    return report("body is not a Messages request");
+    return skippedReport("body is not a Messages request");
   }
   // Routes without the CLI's own mid-conversation system messages (e.g. Haiku 4.5).
   if (!messages.some((m) => isRecord(m) && m["role"] === "system")) {
-    return report("route has no mid-conversation system messages");
+    return skippedReport("route has no mid-conversation system messages");
   }
   const promptBlocks = system.filter(
     (block) => isRecord(block) && block["type"] === "text" && block["text"] === plan.currentPrompt,
   );
-  if (promptBlocks.length !== 1) return report("leading prompt not uniquely matched");
+  if (promptBlocks.length !== 1) return skippedReport("leading prompt not uniquely matched");
   const names = tools.map((tool) => (isRecord(tool) ? tool["name"] : undefined));
   if (names.length !== plan.currentToolNames.length || names.some((n, i) => n !== plan.currentToolNames[i])) {
-    return report("tool list differs from the current tools");
+    return skippedReport("tool list differs from the current tools");
   }
   const assistants: number[] = [];
   messages.forEach((m, i) => {
     if (isRecord(m) && m["role"] === "assistant") assistants.push(i);
   });
   if (assistants.length !== plan.assistantFrames) {
-    return report("assistant messages do not match the replay");
+    return skippedReport("assistant messages do not match the replay");
   }
 
   (promptBlocks[0] as Block)["text"] = plan.initialPrompt;
