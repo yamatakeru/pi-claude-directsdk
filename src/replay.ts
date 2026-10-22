@@ -194,13 +194,22 @@ export function prepareHistory(
   };
 
   const assistantFramesBefore: number[] = [];
-  // The CLI drops assistant frames that hold only empty text.
-  const countAssistants = (): number =>
-    frames.filter(
-      (frame) =>
+  // Frames are only appended, so count each new one once. The CLI drops
+  // assistant frames that hold only empty text; they are not counted.
+  let counted = 0;
+  let assistants = 0;
+  const countAssistants = (): number => {
+    for (; counted < frames.length; counted++) {
+      const frame = frames[counted]!;
+      if (
         frame.type === "assistant" &&
-        frame.message.content.some((block) => block.type !== "text" || block.text !== ""),
-    ).length;
+        frame.message.content.some((block) => block.type !== "text" || block.text !== "")
+      ) {
+        assistants++;
+      }
+    }
+    return assistants;
+  };
   for (const message of messages) {
     assistantFramesBefore.push(countAssistants());
     switch (message.role) {

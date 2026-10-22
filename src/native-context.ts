@@ -345,11 +345,9 @@ function pinBreakpoint(messages: Message[], queried: Block[]): boolean {
   if (!target) return false;
   const after = marked.filter((p) => p.i > target.i || (p.i === target.i && p.j > target.j));
   if (after.length === 0) return false;
-  const moved = after.map((p) => {
-    const mark = p.block["cache_control"];
-    delete p.block["cache_control"];
-    return mark;
-  })[0];
+  // The earliest later marker moves to the target; the others are removed.
+  const moved = after[0]!.block["cache_control"];
+  for (const p of after) delete p.block["cache_control"];
   if (!("cache_control" in target.block)) target.block["cache_control"] = moved;
   return true;
 }
@@ -378,6 +376,7 @@ export function stabilizeNativeRequest(
   if (toolResults === "unmatched") report.skipped.push("queried tool results not uniquely matched");
   if (restoreDateLine(messages)) report.applied.push("dateLineRestored");
   if (dropReminder(messages, frame)) report.applied.push("reminderDropped");
+  // Reordering matters only for a request that caches; it never adds a marker.
   const hasMarks = messages.some(
     (m) => Array.isArray(m.content) && m.content.some((b) => isRecord(b) && "cache_control" in b),
   );

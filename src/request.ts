@@ -359,12 +359,10 @@ const WINDOWS_ESSENTIALS = [
  * differently cased key would otherwise survive and still be read.
  */
 function deleteEnvVar(env: NodeJS.ProcessEnv, name: string): void {
-  delete env[name];
-  if (process.platform === "win32") {
-    for (const key of Object.keys(env)) {
-      if (key.toUpperCase() === name) {
-        delete env[key];
-      }
+  const caseInsensitive = process.platform === "win32";
+  for (const key of Object.keys(env)) {
+    if (key === name || (caseInsensitive && key.toUpperCase() === name)) {
+      delete env[key];
     }
   }
 }
