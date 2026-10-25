@@ -28,7 +28,7 @@ The request transport still loads on the first Claude request. See [docs/startup
 | `CLAUDE_DIRECTSDK_COMMAND` | Override the `claude` executable path. |
 | `CLAUDE_DIRECTSDK_CONFIG_DIR` | Point at a logged-in CLI config directory. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Supply a token from `claude setup-token` in the environment Pi runs in. |
-| `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM` | Experimental. Set to `1` to send later prompt and tool changes as mid-conversation system messages instead of rewriting the leading prompt. See [architecture.md](architecture.md#mid-conversation-system-messages-srcmid-conversationts). |
+| `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS` | Set to `1` to allow turns that Claude Code reports as charged to usage credits. Unset or `0` stops later turns after an overage charge. |
 | `PI_DIRECTSDK_PROMPT_HASHES` | Set to `1` to add SHA-256 hashes of the provider-supplied system prompt and tool definitions to message diagnostics. Unset it or set it to `0` to disable hashes. |
 
 Success and failure diagnostics include request-phase timings, replay counts, upstream request-body bytes, and cache-read share. Unobserved milestones and unavailable cache-read shares are `null`. Milestone times are elapsed milliseconds from call start; durations are separate intervals and are not additive. The spawn-to-replay interval includes CLI startup, and first response data is not necessarily the first generated token.
@@ -37,11 +37,25 @@ Cache-read share measures token reuse, not subscription allowance deductions. Pr
 
 See [docs/troubleshooting.md](troubleshooting.md) for login and environment errors.
 
+## Usage-credit guard
+
+Claude Code can report that a turn used pay-as-you-go usage credits instead of plan limits. When that report arrives, DirectSDK stops the turn with a `billing` error unless `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS=1` is set. The error includes the reported status and reset time.
+
+The guard runs after the response and usage are captured. It cannot undo the charge for the turn that was already charged. Upstream rejections that mention usage credits or extra usage become the same actionable error.
+
+Completed and failed turns carry a `pi-claude-directsdk/rate-limit` diagnostic when the native child reported rate-limit status. The diagnostic includes `status`, `rateLimitType`, `resetsAt`, and overage fields.
+
+## Tool changes
+
+On models whose metadata supports mid-conversation tool changes, DirectSDK keeps later system messages instead of collapsing them. It sends the initial tools, a deferred placeholder, later tool declarations with `defer_loading: true`, and `tool_addition`/`tool_removal` blocks at assistant boundaries. The admitted request adds the `mid-conversation-tool-changes-2026-07-01` beta value.
+
+This lets a conversation remove a tool after using it without failing replay. Pi still validates the response against the current tool inventory, so it never executes a removed tool. Unsupported models keep the collapsed request shape.
+
 ## Verification
 
 ```sh
 npm test
 ```
 
-This runs offline startup verification through your installed Pi and consumes no subscription allowance. Real model requests and complete-session replay require explicit approval. See [docs/testing.md](testing.md).
+This runs the offline regression suite on Node 22 and consumes no subscription allowance. It covers admission, replay carriers, environment guards, the usage-credit guard, and the tool-change plan. Run `npm run verify` for the installed-Pi startup check. Real model requests and complete-session replay require explicit approval. See [docs/testing.md](testing.md).
 

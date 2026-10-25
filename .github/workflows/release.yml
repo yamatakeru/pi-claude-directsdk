@@ -12,10 +12,16 @@
 # `pi-claude-directsdk`, and workflow filename `release.yml`.
 # Staged publishing is always allowed; direct `npm publish` stays off.
 # The workflow file must exist on main first.
-# Requires npm CLI >= 11.5.1 and Node >= 22.14 in the publish job.
+# Requires npm CLI >= 11.15.0 and Node >= 22.14 in the publish job.
 #
-# CI checks types and compilation only. Runtime verification uses the
-# maintainer’s installed Pi and stays outside CI. See docs/testing.md.
+# Verification installs dependencies with npm's --ignore-scripts flag.
+# The publish job installs no dependencies: the package ships source files
+# as-is and defines no pack or prepare scripts. Dependency install scripts
+# never run next to npm publish credentials.
+#
+# CI checks types, compilation, and the offline regression suite. Runtime
+# verification uses the maintainer’s installed Pi and stays outside CI. See
+# docs/testing.md.
 
 name: Release
 
@@ -46,13 +52,19 @@ jobs:
           package-manager-cache: false
       - name: Refuse version mismatch
         run: |
-          test "v$(node -p "require('./package.json').version")" = "${GITHUB_REF_NAME}" \
-            || { echo "Tag ${GITHUB_REF_NAME} does not match package.json version"; exit 1; }
-      - run: npm ci
+          manifest="$(node -p "require('./package.json').version")"
+          lock="$(node -p "require('./package-lock.json').version")"
+          lock_root="$(node -p "require('./package-lock.json').packages[''].version")"
+          test "v${manifest}" = "${GITHUB_REF_NAME}" \
+            || { echo "Tag ${GITHUB_REF_NAME} does not match package.json version v${manifest}"; exit 1; }
+          test "${lock}" = "${manifest}" && test "${lock_root}" = "${manifest}" \
+            || { echo "package-lock.json versions ${lock} and ${lock_root} do not match package.json version ${manifest}"; exit 1; }
+      - run: npm ci --ignore-scripts
       - name: Report dependency vulnerabilities
         continue-on-error: true
         run: npm audit --audit-level=high
       - run: npm run check
+      - run: npm test
       - run: npm run build
 
   publish:
@@ -71,7 +83,6 @@ jobs:
           node-version: "24"
           registry-url: "https://registry.npmjs.org"
           package-manager-cache: false
-      - run: npm ci
       - run: npm stage publish
       - run: gh release create "${GITHUB_REF_NAME}" --title "${GITHUB_REF_NAME}" --generate-notes --draft
         env:

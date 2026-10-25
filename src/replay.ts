@@ -21,13 +21,12 @@ import type {
 } from "@earendil-works/pi-ai/compat";
 import { replayError } from "./errors.js";
 import { toolPrefixedName } from "./request.js";
-import {
+import { deepClone, isRecord } from "./types.js";
+import type {
   NativeAssistantMessage,
   NativeCacheControl,
   NativeContentBlock,
   NativeFrame,
-  deepClone,
-  isRecord,
 } from "./types.js";
 
 /** Diagnostics type carrying preserved native assistant blocks. */
@@ -43,8 +42,6 @@ export interface CarrierProjection {
 export interface ReplayOutput {
   /** Frames in order; the last one is a nonempty user frame. */
   frames: NativeFrame[];
-  /** Assistant frames emitted before each input message; the last entry is the total. */
-  assistantFramesBefore: number[];
 }
 
 /**
@@ -116,6 +113,30 @@ function readCarrier(message: AssistantMessage): {
     messages: deepClone(details["messages"] as unknown as NativeAssistantMessage[]),
     projection: deepClone(details["projection"] as unknown as CarrierProjection),
   };
+}
+
+/**
+ * Number of native assistant frames this Pi message replays as. Carrier
+ * messages can contain more than one native assistant message. The CLI drops
+ * an assistant frame that holds only empty text, so such frames do not count.
+ */
+export function replayAssistantCount(message: AssistantMessage): number {
+  const carrier = readCarrier(message);
+  if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
+    return carrier.messages.filter((native) =>
+      native.content.some((block) => block.type !== "text" || block.text !== ""),
+    ).length;
+  }
+  for (const block of message.content) {
+    if (
+      (block.type === "text" && block.text !== "") ||
+      (block.type === "thinking" && block.thinking !== "") ||
+      block.type === "toolCall"
+    ) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 /**
@@ -193,25 +214,7 @@ export function prepareHistory(
     }
   };
 
-  const assistantFramesBefore: number[] = [];
-  // Frames are only appended, so count each new one once. The CLI drops
-  // assistant frames that hold only empty text; they are not counted.
-  let counted = 0;
-  let assistants = 0;
-  const countAssistants = (): number => {
-    for (; counted < frames.length; counted++) {
-      const frame = frames[counted]!;
-      if (
-        frame.type === "assistant" &&
-        frame.message.content.some((block) => block.type !== "text" || block.text !== "")
-      ) {
-        assistants++;
-      }
-    }
-    return assistants;
-  };
   for (const message of messages) {
-    assistantFramesBefore.push(countAssistants());
     switch (message.role) {
       case "system":
         throw replayError("System messages must precede conversation history");
@@ -360,6 +363,5 @@ export function prepareHistory(
       }
     }
   }
-  assistantFramesBefore.push(countAssistants());
-  return { frames, assistantFramesBefore };
+  return { frames };
 }

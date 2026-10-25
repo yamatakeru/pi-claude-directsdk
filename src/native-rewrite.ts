@@ -1,26 +1,21 @@
 /**
- * The relay's single payload hook: parse the admitted request once, apply the
- * replay-stable context (`native-context.ts`) and, when planned, the
- * mid-conversation rewrite (`mid-conversation.ts`), then serialize once.
- * The original bytes are forwarded whenever nothing applied.
+ * The relay's payload hook: parse the admitted request once, apply the
+ * replay-stable context (`native-context.ts`), then insert the native system
+ * messages for mid-conversation tool changes (`transcript.ts`), and serialize
+ * once. The original bytes are forwarded whenever nothing applied.
+ *
+ * Native-context runs first: it reads the CLI's own trailing system message,
+ * which an injection at the request tail would otherwise follow.
  */
 
-import {
-  applyMidConversation,
-  skippedReport,
-  type MidConversationPlan,
-  type MidConversationReport,
-  type MidConversationSkip,
-} from "./mid-conversation.js";
 import { stabilizeNativeRequest, type NativeContextReport } from "./native-context.js";
+import { injectNativeSystemMessages, type NativeTranscriptPlan } from "./transcript.js";
 import type { NativeContentBlock } from "./types.js";
 import { isRecord } from "./types.js";
 
 export interface NativeRewrite {
   body: Buffer;
   nativeContext: NativeContextReport;
-  /** Null when the opt-in is off. */
-  midConversation: MidConversationReport | null;
 }
 
 function parse(raw: Buffer): Record<string, unknown> | null {
@@ -32,21 +27,20 @@ function parse(raw: Buffer): Record<string, unknown> | null {
   }
 }
 
+/**
+ * Native-context never fails a call. A required system injection that cannot
+ * be applied throws, and the relay answers 500 without contacting upstream.
+ */
 export function rewriteNativeRequest(
   raw: Buffer,
   queried: readonly NativeContentBlock[],
-  midPlan: MidConversationPlan | MidConversationSkip | null,
+  plan?: NativeTranscriptPlan,
 ): NativeRewrite {
+  const injections = plan?.systemInjections ?? [];
   let parsed = parse(raw);
   if (!parsed) {
-    return {
-      body: raw,
-      nativeContext: { applied: [], skipped: ["body is not a Messages request"] },
-      midConversation:
-        midPlan === null
-          ? null
-          : skippedReport(typeof midPlan === "string" ? midPlan : "body is not a Messages request"),
-    };
+    if (injections.length > 0) throw new Error("Native request is not a JSON object");
+    return { body: raw, nativeContext: { applied: [], skipped: ["body is not a Messages request"] } };
   }
 
   let nativeContext: NativeContextReport;
@@ -58,22 +52,12 @@ export function rewriteNativeRequest(
     nativeContext = { applied: [], skipped: ["rewrite failed"] };
   }
 
-  let midConversation: MidConversationReport | null = null;
-  if (typeof midPlan === "string") {
-    midConversation = skippedReport(midPlan);
-  } else if (midPlan) {
-    try {
-      midConversation = applyMidConversation(parsed, midPlan);
-    } catch {
-      // Every check runs before the first edit, so a throw leaves the body intact.
-      midConversation = skippedReport("rewrite failed");
-    }
+  if (injections.length > 0) {
+    const messages = parsed["messages"];
+    if (!Array.isArray(messages)) throw new Error("Native request is missing its messages array");
+    parsed["messages"] = injectNativeSystemMessages(messages, injections, plan!.assistantFrames);
+  } else if (nativeContext.applied.length === 0) {
+    return { body: raw, nativeContext };
   }
-
-  const changed = nativeContext.applied.length > 0 || midConversation?.applied === true;
-  return {
-    body: changed ? Buffer.from(JSON.stringify(parsed), "utf-8") : raw,
-    nativeContext,
-    midConversation,
-  };
+  return { body: Buffer.from(JSON.stringify(parsed), "utf-8"), nativeContext };
 }

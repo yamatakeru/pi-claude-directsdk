@@ -18,6 +18,9 @@ import {
   createAssistantMessageEventStream,
   getCurrentSystemPrompt,
   getCurrentTools,
+  getDeclaredTools,
+  getInitialSystemMessage,
+  getSystemMessageText,
 } from "@earendil-works/pi-ai/compat";
 import type {
   Api,
@@ -32,6 +35,12 @@ import type {
   TranscriptContext,
 } from "@earendil-works/pi-ai/compat";
 import { AdmissionRelay, formatRelayFailure } from "./admission.js";
+import {
+  enforceUsageCredits,
+  rateLimitDiagnostic,
+  usageCreditsRejectionError,
+  type RateLimitInfo,
+} from "./billing.js";
 import {
   PREFIX_HASH_ENV,
   RequestMeasurements,
@@ -50,15 +59,8 @@ import {
 } from "./errors.js";
 import { PROVIDER_ID, QUALIFIED_CLI_RANGE, nativeModel } from "./models.js";
 import type { NativeContextReport } from "./native-context.js";
-import {
-  MidConversationPlan,
-  MidConversationReport,
-  MidConversationSkip,
-  MID_CONVERSATION_ENV,
-  midConversationEnabled,
-  planMidConversation,
-} from "./mid-conversation.js";
 import { rewriteNativeRequest } from "./native-rewrite.js";
+import { supportsNativeToolChanges } from "./model-compat.js";
 import {
   encodeCarrier,
   messageProjection,
@@ -72,23 +74,22 @@ import {
   checkEnvConflicts,
   requestEffort,
   toolBareName,
-  toolPrefixedName,
   writeRequestFiles,
 } from "./request.js";
-import { qualifiedCli, resolveClaude } from "./setup.js";
 import {
+  NATIVE_TOOL_CHANGES_BETA,
+  prepareNativeTranscript,
+} from "./transcript.js";
+import { qualifiedCli, resolveClaude } from "./setup.js";
+import { deepClone, isRecord } from "./types.js";
+import type {
   NativeAssistantMessage,
   NativeContentBlock,
   NativeResultLine,
   NativeUsage,
-  deepClone,
-  isRecord,
 } from "./types.js";
-import {
-  ChildHandle,
-  spawnSupervised,
-  stableChildCwd,
-} from "./process.js";
+import { spawnSupervised, stableChildCwd } from "./process.js";
+import type { ChildHandle } from "./process.js";
 
 const DEFAULT_TIMEOUT_MS = 180_000;
 const NATIVE_API = "claude-directsdk";
@@ -105,7 +106,7 @@ export interface CallDeps {
   createRelay: (
     upstream: string,
     timeoutMs: number,
-    prepareBody?: (body: Buffer) => Buffer,
+    options?: { transformRequest?: (body: Buffer) => Buffer; betas?: string[] },
   ) => Promise<AdmissionRelay>;
   checkCli: (resolved: string[], env: NodeJS.ProcessEnv) => boolean;
   makeRequestDir: () => string;
@@ -114,8 +115,7 @@ export interface CallDeps {
 
 export const defaultDeps: CallDeps = {
   spawn: (options) => spawnSupervised(options),
-  createRelay: (upstream, timeoutMs, prepareBody) =>
-    AdmissionRelay.create(upstream, timeoutMs, prepareBody),
+  createRelay: (upstream, timeoutMs, options) => AdmissionRelay.create(upstream, timeoutMs, options),
   checkCli: (resolved, env) => qualifiedCli(resolved, env),
   makeRequestDir: () => mkdtempSync(join(tmpdir(), "pi-directsdk-")),
   childCwd: () => stableChildCwd(),
@@ -258,9 +258,9 @@ async function executeCall(
   let cliAvailable = false;
   let nativeCostUsd = -1;
   let observedUsage: NativeUsage | undefined;
+  let latestRateLimit: RateLimitInfo | undefined;
   let abortRelay: (() => void) | undefined;
   let nativeContext: NativeContextReport | null = null;
-  let midConversation: MidConversationReport | null = null;
 
   const metaDiagnostic = (): AssistantMessageDiagnostic => {
     return {
@@ -275,7 +275,6 @@ async function executeCall(
         nativeContext: nativeContext
           ? { applied: [...nativeContext.applied], skipped: [...nativeContext.skipped] }
           : null,
-        midConversation: midConversation ? { ...midConversation } : null,
         nativeCostUsd,
         nativeCostNote: "estimate, not subscription charge",
         cliAvailable,
@@ -302,6 +301,7 @@ async function executeCall(
     const diagnostics = output.diagnostics ?? [];
     output.diagnostics = [
       ...diagnostics.filter((diagnostic) => diagnostic.type !== "pi-claude-directsdk/meta"),
+      ...(latestRateLimit ? [rateLimitDiagnostic(latestRateLimit)] : []),
       metaDiagnostic(),
     ];
     stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -341,12 +341,23 @@ async function executeCall(
       throw new Error("timeoutMs must be positive milliseconds");
     }
 
-    const collapsed = collapseSystemMessages(context);
-    const systemPrompt = getCurrentSystemPrompt(collapsed.messages);
-    const tools = getCurrentTools(collapsed.messages);
-    const history = collapsed.messages.filter((m) => m.role !== "system");
     const requestNativeModelId = nativeModel(model.id, model.contextWindow);
     nativeModelId = requestNativeModelId;
+    const cacheControl = replayCacheControl(mergedEnv, requestNativeModelId);
+    const nativeTranscript = options.toolChoice === "none"
+      ? undefined
+      : prepareNativeTranscript(
+          context.messages,
+          supportsNativeToolChanges(model.id, model.compat),
+        );
+    const collapsed = collapseSystemMessages(context);
+    const initialSystem = getInitialSystemMessage(context.messages);
+    const systemPrompt = nativeTranscript && initialSystem
+      ? getSystemMessageText(initialSystem)
+      : getCurrentSystemPrompt(collapsed.messages);
+    const tools = getCurrentTools(context.messages);
+    const history = (nativeTranscript ? context.messages : collapsed.messages)
+      .filter((m) => m.role !== "system");
     const build = buildRequestBody({
       tools,
       toolChoice: options.toolChoice,
@@ -354,23 +365,13 @@ async function executeCall(
       thinkingLevelMap: model.thinkingLevelMap,
       maxTokens: options["maxTokens"] as number | undefined,
     });
-    const { frames, assistantFramesBefore } = prepareHistory(
-      history,
-      new Set(build.toolNames),
-      replayCacheControl(mergedEnv, requestNativeModelId),
-    );
-    const midPlan: MidConversationPlan | MidConversationSkip | null = midConversationEnabled(mergedEnv)
-      ? planMidConversation({
-          messages: context.messages,
-          currentPrompt: systemPrompt,
-          currentToolNames: (build.body["tools"] as Array<{ name: string }>).map((tool) => tool.name),
-          assistantFramesBefore,
-          nativeTools: (planned) =>
-            buildRequestBody({ tools: planned }).body["tools"] as Array<{ name: string }>,
-          nativeName: toolPrefixedName,
-          toolsEnabled: options.toolChoice !== "none",
-        })
-      : null;
+    if (nativeTranscript) {
+      build.body["tools"] = nativeTranscript.requestTools;
+    }
+    const allowedToolNames = nativeTranscript
+      ? new Set(getDeclaredTools(context.messages).map((tool) => tool.name))
+      : new Set(build.toolNames);
+    const { frames } = prepareHistory(history, allowedToolNames, cacheControl);
     measurements.setReplayFrameCount(frames.length);
     measurements.mark("historyPrepared");
 
@@ -415,11 +416,13 @@ async function executeCall(
     });
     // The final frame is exactly what Pi queried.
     const queried = frames[frames.length - 1]?.message.content ?? [];
-    relay = await deps.createRelay(upstream, timeoutMs, (raw) => {
-      const rewrite = rewriteNativeRequest(raw, queried, midPlan);
-      nativeContext = rewrite.nativeContext;
-      midConversation = rewrite.midConversation;
-      return rewrite.body;
+    relay = await deps.createRelay(upstream, timeoutMs, {
+      transformRequest: (raw: Buffer) => {
+        const rewrite = rewriteNativeRequest(raw, queried, nativeTranscript);
+        nativeContext = rewrite.nativeContext;
+        return rewrite.body;
+      },
+      ...(nativeTranscript ? { betas: [NATIVE_TOOL_CHANGES_BETA] } : {}),
     });
     const activeRelay = relay;
     // Stashed at header time, invoked after the response completes and
@@ -439,7 +442,6 @@ async function executeCall(
 
     const childEnv = buildChildEnv({ baseEnv: mergedEnv, relayUrl: relay.url, body });
     delete childEnv[PREFIX_HASH_ENV];
-    delete childEnv[MID_CONVERSATION_ENV];
     const { command, args } = buildArgv({
       claudeBin: resolved[0],
       nativeModelId: requestNativeModelId,
@@ -530,6 +532,11 @@ async function executeCall(
         results.push(result);
         if (isRecord(result.usage)) {
           observedUsage = result.usage as NativeUsage;
+        }
+      } else if (event.type === "rate_limit_event") {
+        const info = event["rate_limit_info"];
+        if (isRecord(info)) {
+          latestRateLimit = info as RateLimitInfo;
         }
       } else if (event.type === "stream_event") {
         const native = (event as { event?: unknown }).event;
@@ -726,6 +733,10 @@ async function executeCall(
     ].join("; ");
     if (used) {
       if (relay.status !== 200 || !relay.capture.complete || !relay.capture.message) {
+        const rejection = usageCreditsRejectionError(
+          [relay.errorText(), nativeErrorText].filter(Boolean).join("\n"),
+        );
+        if (rejection) throw rejection;
         throw upstreamError(
           `first upstream attempt: status ${relay.status ?? "unknown"}, ` +
             `capture ${relay.capture.complete ? "complete" : "incomplete"}` +
@@ -742,9 +753,13 @@ async function executeCall(
         throw loggedOutError(nativeErrorText);
       }
       if (nativeErrorText) {
+        const rejection = usageCreditsRejectionError(nativeErrorText);
+        if (rejection) throw rejection;
         throw nativeError(nativeErrorText);
       }
       if (result.is_error && resultErrors) {
+        const rejection = usageCreditsRejectionError(resultErrors);
+        if (rejection) throw rejection;
         if (/not logged in|authentication_failed/i.test(resultErrors)) {
           throw loggedOutError(resultErrors);
         }
@@ -769,6 +784,12 @@ async function executeCall(
     }
 
     const denialHandled = relay.denied > 0 || authoritative.stop_reason === "refusal";
+    const requestRejection = usageCreditsRejectionError(
+      [relay.errorText(), nativeErrorText, resultErrors].filter(Boolean).join("\n"),
+    );
+    if (requestRejection) {
+      throw requestRejection;
+    }
     if (nativeErrorText && !denialHandled) {
       throw nativeError(nativeErrorText);
     }
@@ -791,6 +812,8 @@ async function executeCall(
       throw incompleteError("Native result missing complete token usage");
     }
     output.usage = usage;
+    calculateCost(model, output.usage);
+    enforceUsageCredits(latestRateLimit, mergedEnv);
     if (typeof authoritative.id === "string" && authoritative.id) {
       output.responseId = authoritative.id;
     } else if (streamId) {
@@ -911,7 +934,6 @@ async function executeCall(
     if (mapped.errorMessage) {
       output.errorMessage = mapped.errorMessage;
     }
-    calculateCost(model, output.usage);
 
     const projection = messageProjection(output);
     const natives = used && relay.capture.message ? [relay.capture.message] : assistants;
@@ -919,7 +941,11 @@ async function executeCall(
       typeof result.total_cost_usd === "number" ? result.total_cost_usd : -1;
     const carrier = encodeCarrier(natives, projection);
     measurements.mark("completionPublished");
-    output.diagnostics = [carrier, metaDiagnostic()];
+    output.diagnostics = [
+      carrier,
+      ...(latestRateLimit ? [rateLimitDiagnostic(latestRateLimit)] : []),
+      metaDiagnostic(),
+    ];
 
     if (output.stopReason === "error") {
       stream.push({ type: "error", reason: "error", error: output });

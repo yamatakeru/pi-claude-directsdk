@@ -39,10 +39,11 @@ Rules:
 - Thinking without a matching native carrier is replayed as ordinary assistant text. This allows switching providers during a session.
 - Other unsupported history is rejected with a `replay` error, never flattened into prose.
 - Signed native thinking survives only inside a durable carrier (`pi-claude-directsdk/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly.
+- Models with verified mid-conversation tool-change support keep later system messages. The initial system message supplies the system prompt and initial tools. Later tool additions and removals are injected as native system content at their assistant boundaries, and historical calls to any tool declared earlier in the transcript remain replayable. Response validation still uses the current Pi inventory.
 
 ### Request assembly (`src/request.ts`)
 
-The current system prompt and tool schemas travel through per-request private files with owner-only permissions:
+The system prompt and tool schemas travel through per-request private files with owner-only permissions. Later system messages in the transcript travel through the relay rewrite when the model supports mid-conversation tool changes:
 
 - `system.md`: the system prompt.
 - `settings.json`: carries `CLAUDE_CODE_EXTRA_BODY`.
@@ -51,19 +52,21 @@ The current system prompt and tool schemas travel through per-request private fi
 
 Files avoid OS argument and environment-string limits. Authentication and identity headers are never replaced. The relay preserves them.
 
+When the model supports mid-conversation tool changes, the request body carries the initial tools, a deferred placeholder, and later-added tools with `defer_loading: true`. The relay adds the `mid-conversation-tool-changes-2026-07-01` beta value to the admitted request and injects native system messages before their assistant boundaries. Unsupported models keep the collapsed system message and current tool set.
+
 The child argv (`buildArgv`) runs the CLI with `--input-format stream-json`, `--output-format stream-json`, `--verbose`, `--include-partial-messages`, `--max-turns 1`, `--permission-mode dontAsk`, `--no-session-persistence`, `--strict-mcp-config`, `--disable-slash-commands`, and an empty `--setting-sources`. When the request body carries an effort level, the argv also passes it as `--effort`. `--max-turns 1` is accepted by the qualified CLI even though recent `--help` output hides it. The installed-Pi harness verifies the request path with the user’s real CLI.
 
 The child environment (`buildChildEnv`) points `ANTHROPIC_BASE_URL` at the relay. It sets native isolation flags (`ENABLE_TOOL_SEARCH=false`, `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`, `CLAUDE_CODE_MAX_RETRIES=0`, `DISABLE_AUTO_COMPACT=1`, `DISABLE_COMPACT=1`, `CLAUDE_CODE_TOTAL_TOKENS_REMINDER=off`). It removes an inherited `CLAUDE_CODE_EXTRA_BODY` and `CLAUDE_CODE_EFFORT_LEVEL`; on Windows the match ignores case, because the child reads environment names case-insensitively. Sampling controls from Pi options (`temperature`, `top_p`) are dropped because subscription routes reject them.
 
 ### Admission relay (`src/admission.ts`)
 
-The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. Request identity and headers stay native. The payload stays native except for one bounded step and the opt-in mid-conversation rewrite, both described below; HTTP transfer encoding also changes.
+The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. The relay changes HTTP transfer encoding. Request identity stays native. The transport may rewrite the request body for replay-stable native context and mid-conversation system messages, both described below, and add beta values to `anthropic-beta`; the payload otherwise stays native.
 
 ### Replay-stable native context (`src/native-context.ts`)
 
 Every Pi model call replays history through a fresh child, and the CLI adds per-request context: its session-context reminder on the final user or tool-result frame, and today's date split out of its environment message into a trailing system message. Its message cache breakpoint lands on that context. None of it recurs in the next request, so the prefix cached there would never be read.
 
-Before forwarding, the relay's payload hook (`src/native-rewrite.ts`) parses the admitted body once, applies `stabilizeNativeRequest` and then, when enabled, the mid-conversation rewrite, and serializes once. It restores one invariant: everything in request N up to its message breakpoint appears unchanged at the start of request N+1. Pi-owned content is identified structurally, as the final frame `prepareHistory` built. The CLI's wording is never matched, except for the exact date line.
+Before forwarding, the relay's payload hook (`src/native-rewrite.ts`) parses the admitted body once, applies `stabilizeNativeRequest` and then, on supported models, the tool-change system messages, and serializes once. It restores one invariant: everything in request N up to its message breakpoint appears unchanged at the start of request N+1. Pi-owned content is identified structurally, as the final frame `prepareHistory` built. The CLI's wording is never matched, except for the exact date line.
 
 - Tool results: text the CLI appended to the queried tool results is removed, only when the ordered tool-use IDs anchor the whole frame. The CLI also trims surrounding whitespace from the newest tool result before appending, so Pi's original text is restored there too.
 - Later user turns: plain text the CLI placed before the queried frame is dropped, only when the frame occurs exactly once. A continuous native session carries this context once; per-call replay would otherwise repeat it on every call and replay it nowhere.
@@ -77,27 +80,9 @@ The relay reconstructs the upstream assistant message from the SSE stream (`SseC
 
 The failure record (`relayFailure` in the `pi-claude-directsdk/meta` diagnostic, also summarized in the error text) holds the error name, the Node `code`, `syscall`, address, and port. For an `AggregateError`, such as a failed connection to every resolved address, it also holds each inner error's code and address (at most eight). It also records the phase: `request-body`, `connect` (no request bytes reached upstream), `request`, or `response`. It never contains request or response content. Messages are kept only for the relay's own fixed errors. Upstream targets must be HTTPS, except loopback HTTP endpoints. Request bodies are capped at 512 MiB.
 
-### Mid-conversation system messages (`src/mid-conversation.ts`)
+### Tool-change injection boundaries
 
-Experimental and off by default. By default, the provider collapses Pi's system messages into one leading prompt and the current tool list. A prompt section or tool change therefore rewrites the start of the request, and the next call misses the whole cache.
-
-With `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, the relay rewrites the admitted request into the form Pi's own Anthropic provider uses:
-
-- The leading system block carries Pi's initial prompt.
-- The tool list carries the initial tools, a deferred placeholder, and later tools with `defer_loading`.
-- Each later Pi system message is inserted before the next assistant message as a `role: system` message, carrying its rendered section changes and `tool_addition` / `tool_removal` references.
-
-The CLI still receives the collapsed prompt and every current tool, so the inert MCP server advertises all of them. Insertion points count replayed assistant frames, excluding ones that hold only empty text, because the CLI drops those.
-
-The request is forwarded collapsed, with the reason in the `midConversation` meta diagnostic, in these cases:
-
-- the admitted body is not a Messages request, or the rewrite fails unexpectedly;
-- the transcript has no leading system message, or the tool declarations cannot be built;
-- the route has no mid-conversation system messages (for example Haiku 4.5);
-- the collapsed prompt or tool list does not match exactly;
-- the assistant messages do not match the replay.
-
-When a tool name is redefined, tool changes cannot be expressed by name. Section updates are still sent, and the current tool list is sent as today.
+The relay inserts upstream's mid-conversation system messages (`src/transcript.ts`) after the native-context steps, in the same hook. Insertion points count the assistant frames the CLI sends. A carried assistant frame that holds only empty text is not counted, because the CLI drops it. The plan also records the expected number of assistant frames; a request with a different number throws, and the relay answers 500 before contacting upstream rather than inserting at a shifted boundary.
 
 ### Child supervision (`src/process.ts`)
 
@@ -120,6 +105,8 @@ The first request after this directory change can miss a previously cached nativ
 ### Stream conversion (`src/stream.ts`)
 
 The provider converts child stdout `stream-json` to Pi events. Native result errors are preserved even when stderr is empty. Prompt-length errors report the selected route and configured context window. Native tool calls are published only after the first upstream response is complete and the child has exited. Usage and stop reason come from the authoritative native usage. Incomplete native or upstream responses produce `incomplete` or `upstream` errors.
+
+The provider reads `rate_limit_event.rate_limit_info`. If the authoritative response reports usage-credit overage and `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS` is not enabled, the turn fails with a non-retryable `billing` error after usage is captured. Completed and failed turns carry a `pi-claude-directsdk/rate-limit` diagnostic. Upstream usage-credit rejection text maps to the same error.
 
 ### Inert MCP (`src/inert-mcp.ts`)
 
@@ -146,6 +133,7 @@ CLI resolution and version qualification run only when a model call needs them. 
 - The provider never executes native tools.
 - The provider never manages login or reads credentials.
 - The provider never falls back to another billing route.
+- A turn that Claude Code reports as charged to usage credits stops later turns unless the user explicitly allows usage credits.
 - Missing CLI and logged-out CLI fail with actionable errors. See [troubleshooting.md](troubleshooting.md).
 
 ## Model routing
@@ -168,3 +156,4 @@ Pi owns tool execution. The native child advertises Pi tools through the inert M
 - Only `tool_choice` `auto` and `none` are supported.
 - Constrained decoding is not enforced. Grammar and best-effort (`strict: "prefer"`) annotations fall back to normal JSON-schema tool calling. Required strict (`strict: "require"`) stays rejected. Malformed native tool input still fails downstream.
 - Native tool calls reach Pi only after the first upstream response is complete and the child has exited.
+- On models with verified mid-conversation tool-change support, historical calls to tools declared earlier in the transcript are replayable, including tools removed from the current inventory. Pi never executes a tool outside the current inventory.

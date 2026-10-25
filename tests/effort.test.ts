@@ -2,7 +2,7 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { buildArgv, buildChildEnv, buildRequestBody, requestEffort } from "../src/request.js";
+import { buildArgv, buildChildEnv, buildRequestBody, requestEffort } from "../src/request.ts";
 
 const files = {
   systemPath: "s",

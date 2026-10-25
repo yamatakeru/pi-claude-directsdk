@@ -8,6 +8,7 @@ export type DirectSdkErrorKind =
   | "incomplete"
   | "native"
   | "upstream"
+  | "billing"
   | "timeout"
   | "cancelled";
 

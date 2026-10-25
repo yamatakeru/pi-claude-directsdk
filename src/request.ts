@@ -149,7 +149,63 @@ export interface RequestBuild {
   toolNames: string[];
 }
 
+export interface PreparedTools {
+  manifest: ManifestEntry[];
+  nativeTools: Array<Record<string, unknown>>;
+  toolNames: string[];
+}
+
 const TOOL_NAME_PATTERN = /^[A-Za-z0-9_-]{1,50}$/;
+
+/** Validate Pi tools and build their native declarations and inert manifest. */
+export function prepareTools(tools: Tool[]): PreparedTools {
+  const manifest: ManifestEntry[] = [];
+  const nativeTools: Array<Record<string, unknown>> = [];
+  const toolNames: string[] = [];
+  const seen = new Set<string>();
+
+  for (const tool of tools) {
+    const name = tool.name;
+    if (typeof name !== "string" || !TOOL_NAME_PATTERN.test(name)) {
+      throw new Error(`Tool names must be unique ASCII identifiers of at most 50 characters: ${name}`);
+    }
+    if (seen.has(name)) {
+      throw new Error(`Duplicate tool name: ${name}`);
+    }
+    seen.add(name);
+    if (typeof tool.description !== "string") {
+      throw new Error(`Tool description must be a string: ${name}`);
+    }
+    if (tool.constrainedSampling) {
+      // Grammar variants are optional provider-specific encodings. Like
+      // Pi's Anthropic adapter, use the tool's JSON schema when grammar
+      // decoding is unavailable. Best-effort strict schemas also fall back
+      // to normal tool calling; required strict schemas stay rejected.
+      // Malformed native input still fails downstream in parseToolInput.
+      const sampling = tool.constrainedSampling as { type?: unknown; strict?: unknown };
+      const bestEffort =
+        sampling.type === "grammar" ||
+        (sampling.type === "json_schema" && sampling.strict === "prefer");
+      if (!bestEffort) {
+        throw new Error(
+          `Strict constrained sampling is unsupported by this transport: ${name}. ` +
+          `Only grammar fallback and best-effort (strict "prefer") tools are accepted.`,
+        );
+      }
+    }
+    // JSON round-trip drops typebox symbols and undefined fields.
+    const raw = tool.parameters === undefined ? { type: "object" } : tool.parameters;
+    const schema = normalizeInputSchema(JSON.parse(JSON.stringify(raw)) as unknown);
+    manifest.push({ name, description: tool.description, inputSchema: schema });
+    nativeTools.push({
+      name: toolPrefixedName(name),
+      description: tool.description,
+      input_schema: schema,
+    });
+    toolNames.push(name);
+  }
+  return { manifest, nativeTools, toolNames };
+}
 
 /**
  * Build the native request body and the inert MCP manifest from Pi tools.
@@ -162,60 +218,12 @@ export function buildRequestBody(options: {
   thinkingLevelMap?: Partial<Record<string, string | null>> | undefined;
   maxTokens?: number | undefined;
 }): RequestBuild {
-  const { tools } = options;
   if (options.toolChoice !== undefined && options.toolChoice !== "auto" && options.toolChoice !== "none") {
     throw new Error("Only tool_choice auto and none are supported");
   }
   const useTools = options.toolChoice !== "none";
-  const manifest: ManifestEntry[] = [];
-  const bodyTools: Array<Record<string, unknown>> = [];
-  const toolNames: string[] = [];
-  const seen = new Set<string>();
-
-  if (useTools) {
-    for (const tool of tools) {
-      const name = tool.name;
-      if (typeof name !== "string" || !TOOL_NAME_PATTERN.test(name)) {
-        throw new Error(`Tool names must be unique ASCII identifiers of at most 50 characters: ${name}`);
-      }
-      if (seen.has(name)) {
-        throw new Error(`Duplicate tool name: ${name}`);
-      }
-      seen.add(name);
-      if (typeof tool.description !== "string") {
-        throw new Error(`Tool description must be a string: ${name}`);
-      }
-      if (tool.constrainedSampling) {
-        // Grammar variants are optional provider-specific encodings. Like
-        // Pi's Anthropic adapter, use the tool's JSON schema when grammar
-        // decoding is unavailable. Best-effort strict schemas also fall back
-        // to normal tool calling; required strict schemas stay rejected.
-        // Malformed native input still fails downstream in parseToolInput.
-        const sampling = tool.constrainedSampling as { type?: unknown; strict?: unknown };
-        const bestEffort =
-          sampling.type === "grammar" ||
-          (sampling.type === "json_schema" && sampling.strict === "prefer");
-        if (!bestEffort) {
-          throw new Error(
-            `Strict constrained sampling is unsupported by this transport: ${name}. ` +
-            `Only grammar fallback and best-effort (strict "prefer") tools are accepted.`,
-          );
-        }
-      }
-      // JSON round-trip drops typebox symbols and undefined fields.
-      const raw = tool.parameters === undefined ? { type: "object" } : tool.parameters;
-      const schema = normalizeInputSchema(JSON.parse(JSON.stringify(raw)) as unknown);
-      manifest.push({ name, description: tool.description, inputSchema: schema });
-      bodyTools.push({
-        name: toolPrefixedName(name),
-        description: tool.description,
-        input_schema: schema,
-      });
-      toolNames.push(name);
-    }
-  }
-
-  const body: Record<string, unknown> = { tools: bodyTools };
+  const prepared = prepareTools(useTools ? options.tools : []);
+  const body: Record<string, unknown> = { tools: prepared.nativeTools };
 
   // Pi has no thinking-off level: an undefined reasoning keeps native
   // defaults (best-effort mirror of the reference implementation).
@@ -235,7 +243,7 @@ export function buildRequestBody(options: {
   }
   // Subscription routes reject sampling controls, so temperature/top_p from
   // Pi options are intentionally dropped, never forwarded.
-  return { body, manifest, toolNames };
+  return { body, manifest: prepared.manifest, toolNames: prepared.toolNames };
 }
 
 /**
@@ -249,8 +257,6 @@ export function requestEffort(body: Record<string, unknown>): string | undefined
   const effort = isRecord(config) ? config["effort"] : undefined;
   return typeof effort === "string" && effort ? effort : undefined;
 }
-
-
 
 export interface RequestFiles {
   systemPath: string;
