@@ -117,12 +117,15 @@ function readCarrier(message: AssistantMessage): {
 
 /**
  * Number of native assistant frames this Pi message replays as. Carrier
- * messages can contain more than one native assistant message.
+ * messages can contain more than one native assistant message. The CLI drops
+ * an assistant frame that holds only empty text, so such frames do not count.
  */
 export function replayAssistantCount(message: AssistantMessage): number {
   const carrier = readCarrier(message);
   if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
-    return carrier.messages.length;
+    return carrier.messages.filter((native) =>
+      native.content.some((block) => block.type !== "text" || block.text !== ""),
+    ).length;
   }
   for (const block of message.content) {
     if (

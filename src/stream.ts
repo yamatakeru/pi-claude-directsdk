@@ -416,10 +416,9 @@ async function executeCall(
     });
     // The final frame is exactly what Pi queried.
     const queried = frames[frames.length - 1]?.message.content ?? [];
-    const injections = nativeTranscript?.systemInjections ?? [];
     relay = await deps.createRelay(upstream, timeoutMs, {
       transformRequest: (raw: Buffer) => {
-        const rewrite = rewriteNativeRequest(raw, queried, injections);
+        const rewrite = rewriteNativeRequest(raw, queried, nativeTranscript);
         nativeContext = rewrite.nativeContext;
         return rewrite.body;
       },

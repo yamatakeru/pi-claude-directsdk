@@ -37,6 +37,8 @@ export interface NativeSystemInjection {
 export interface NativeTranscriptPlan {
   requestTools: Array<Record<string, unknown>>;
   systemInjections: NativeSystemInjection[];
+  /** Assistant frames the CLI is expected to send; injections index into them. */
+  assistantFrames: number;
 }
 
 function nativeSystemBlocks(message: SystemMessage): Array<Record<string, unknown>> {
@@ -137,6 +139,7 @@ export function prepareNativeTranscript(
       ...laterNative,
     ],
     systemInjections,
+    assistantFrames: assistantOrdinal,
   };
 }
 
@@ -146,13 +149,24 @@ interface NativeRequestMessage {
   [key: string]: unknown;
 }
 
-/** Insert native system messages before their assistant boundaries. */
+/**
+ * Insert native system messages before their assistant boundaries. With
+ * `assistantFrames`, a request whose assistant count differs throws instead
+ * of inserting at a shifted boundary.
+ */
 export function injectNativeSystemMessages(
   messages: NativeRequestMessage[],
   injections: NativeSystemInjection[],
+  assistantFrames?: number,
 ): NativeRequestMessage[] {
   if (injections.length === 0) {
     return messages;
+  }
+  if (assistantFrames !== undefined) {
+    const sent = messages.filter((message) => message.role === "assistant").length;
+    if (sent !== assistantFrames) {
+      throw new Error("Native request assistant messages do not match the replay");
+    }
   }
   const byAssistant = new Map<number, NativeRequestMessage[]>();
   const trailing: NativeRequestMessage[] = [];

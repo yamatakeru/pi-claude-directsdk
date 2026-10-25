@@ -9,7 +9,7 @@
  */
 
 import { stabilizeNativeRequest, type NativeContextReport } from "./native-context.js";
-import { injectNativeSystemMessages, type NativeSystemInjection } from "./transcript.js";
+import { injectNativeSystemMessages, type NativeTranscriptPlan } from "./transcript.js";
 import type { NativeContentBlock } from "./types.js";
 import { isRecord } from "./types.js";
 
@@ -34,8 +34,9 @@ function parse(raw: Buffer): Record<string, unknown> | null {
 export function rewriteNativeRequest(
   raw: Buffer,
   queried: readonly NativeContentBlock[],
-  injections: readonly NativeSystemInjection[] = [],
+  plan?: NativeTranscriptPlan,
 ): NativeRewrite {
+  const injections = plan?.systemInjections ?? [];
   let parsed = parse(raw);
   if (!parsed) {
     if (injections.length > 0) throw new Error("Native request is not a JSON object");
@@ -54,7 +55,7 @@ export function rewriteNativeRequest(
   if (injections.length > 0) {
     const messages = parsed["messages"];
     if (!Array.isArray(messages)) throw new Error("Native request is missing its messages array");
-    parsed["messages"] = injectNativeSystemMessages(messages, [...injections]);
+    parsed["messages"] = injectNativeSystemMessages(messages, injections, plan!.assistantFrames);
   } else if (nativeContext.applied.length === 0) {
     return { body: raw, nativeContext };
   }
