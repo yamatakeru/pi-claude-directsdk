@@ -1,5 +1,5 @@
 /**
- * Admission relay failures (#4, #7) and the body hook used by #1 and #3.
+ * Admission relay failures (#4, #7) and the request-rewrite failure path.
  * Upstreams are loopback HTTP fixtures; nothing leaves the machine.
  */
 
@@ -7,7 +7,7 @@ import assert from "node:assert/strict";
 import { createServer, request, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { test } from "node:test";
-import { AdmissionRelay, formatRelayFailure } from "../src/admission.js";
+import { AdmissionRelay, formatRelayFailure } from "../src/admission.ts";
 
 function listen(server: Server): Promise<string> {
   return new Promise((resolve) => {
@@ -95,34 +95,32 @@ test("#7 an upstream dropped mid-response settles the relay", async () => {
   }
 });
 
-test("the body hook rewrites the admitted request; a throwing hook forwards it unchanged", async () => {
-  const seen: string[] = [];
-  const upstreamServer = createServer((req, res) => {
-    let body = "";
-    req.on("data", (chunk: Buffer) => (body += chunk.toString()));
-    req.on("end", () => {
-      seen.push(body);
-      res.writeHead(400, { "content-type": "application/json" });
-      res.end('{"error":{"message":"fixture"}}');
-    });
+test("a throwing request rewrite answers 500 before any upstream contact", async () => {
+  let contacted = 0;
+  const upstreamServer = createServer((_req, res) => {
+    contacted++;
+    res.writeHead(200);
+    res.end();
   });
   const upstream = await listen(upstreamServer);
+  const relay = await AdmissionRelay.create(upstream, 5_000, {
+    transformRequest: () => {
+      throw new Error("Native request lost an assistant boundary needed by system history");
+    },
+  });
   try {
-    for (const hook of [() => Buffer.from("rewritten"), () => { throw new Error("bug"); }]) {
-      const relay = await AdmissionRelay.create(upstream, 5_000, hook);
-      try {
-        await post(relay.url, "original");
-        // Later native attempts are denied locally.
-        const denied = await post(relay.url, "retry");
-        assert.equal(denied.status, 400);
-        assert.match(denied.text, /PI_MODEL_ADMISSION_CONSUMED/);
-        assert.equal(relay.denied, 1);
-      } finally {
-        await relay.close();
-      }
-    }
-    assert.deepEqual(seen, ["rewritten", "original"]);
+    const first = await post(relay.url, "original");
+    assert.equal(first.status, 500);
+    assert.match(first.text, /Native request rewrite failed/);
+    assert.equal(contacted, 0);
+    // Only the error name and phase are kept, never its message.
+    assert.equal(formatRelayFailure(relay.failure!), "Error during request-body");
+    // Later native attempts are still denied locally.
+    const denied = await post(relay.url, "retry");
+    assert.equal(denied.status, 400);
+    assert.match(denied.text, /PI_MODEL_ADMISSION_CONSUMED/);
   } finally {
+    await relay.close();
     upstreamServer.closeAllConnections();
     await new Promise((resolve) => upstreamServer.close(resolve));
   }

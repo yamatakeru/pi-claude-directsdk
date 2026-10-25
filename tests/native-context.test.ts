@@ -6,8 +6,8 @@
 
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { rewriteNativeRequest } from "../src/native-rewrite.js";
-import type { NativeContentBlock } from "../src/types.js";
+import { rewriteNativeRequest } from "../src/native-rewrite.ts";
+import type { NativeContentBlock } from "../src/types.ts";
 
 const CC = { type: "ephemeral", ttl: "1h" } as const;
 const REMINDER = "<system-reminder>session context</system-reminder>";

@@ -51,7 +51,6 @@
     "check": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
     "test": "node --experimental-strip-types --disable-warning=DEP0205 --import ./tests/register.mjs --test \"tests/*.test.ts\"",
-    "test:unit": "rm -rf .build/test && tsc -p tsconfig.test.json && node --test --test-timeout=20000 '.build/test/test/*.test.js'",
     "verify": "python3 scripts/verify.py startup"
   }
 }
