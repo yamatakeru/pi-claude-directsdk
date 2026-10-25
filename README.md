@@ -76,7 +76,7 @@ Relative to upstream v0.2.0 (`6574117`):
 
 - Changing the thinking level mid-session still causes a near-full cache miss ([#5](https://github.com/yamatakeru/pi-claude-directsdk/issues/5)).
 - After a long tool loop with thinking, the next user turn may miss part of the cache; under investigation ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)).
-- A tool change still causes a full cache miss on models without mid-conversation tool-change support, such as Haiku 4.5 and Sonnet 5, and on any model when a tool is redefined under the same name ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
+- A tool change still causes a full cache miss on models that Pi's model metadata does not mark as supporting mid-conversation tool changes, such as Haiku 4.5 and Sonnet 5, and on any model when a tool is redefined under the same name ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
 
 ### Verification
 
