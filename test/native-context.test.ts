@@ -15,7 +15,7 @@ const DATE = "Today's date is 2026-10-22.";
 
 function run(body: unknown, queried: NativeContentBlock[]) {
   const raw = Buffer.from(JSON.stringify(body));
-  const rewrite = rewriteNativeRequest(raw, queried, null);
+  const rewrite = rewriteNativeRequest(raw, queried);
   const result = { body: rewrite.body, report: rewrite.nativeContext };
   return { raw, result, body: JSON.parse(result.body.toString()) as Record<string, unknown> };
 }
@@ -254,15 +254,14 @@ test("#1 several later markers fold into one on the replay-stable block", () => 
 
 test("#1 a non-Messages body is forwarded unchanged", () => {
   const raw = Buffer.from("not json");
-  const result = rewriteNativeRequest(raw, [{ type: "text", text: "x" }], null);
+  const result = rewriteNativeRequest(raw, [{ type: "text", text: "x" }]);
   assert.equal(result.body, raw);
   assert.deepEqual(result.nativeContext, { applied: [], skipped: ["body is not a Messages request"] });
-  assert.equal(result.midConversation, null);
 });
 
 test("#1 an empty queried frame is reported as such", () => {
   const raw = Buffer.from(JSON.stringify({ messages: [] }));
-  const result = rewriteNativeRequest(raw, [], null);
+  const result = rewriteNativeRequest(raw, []);
   assert.equal(result.body, raw);
   assert.deepEqual(result.nativeContext, { applied: [], skipped: ["queried frame is empty"] });
 });

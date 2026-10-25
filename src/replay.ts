@@ -43,8 +43,6 @@ export interface CarrierProjection {
 export interface ReplayOutput {
   /** Frames in order; the last one is a nonempty user frame. */
   frames: NativeFrame[];
-  /** Assistant frames emitted before each input message; the last entry is the total. */
-  assistantFramesBefore: number[];
 }
 
 /**
@@ -193,25 +191,7 @@ export function prepareHistory(
     }
   };
 
-  const assistantFramesBefore: number[] = [];
-  // Frames are only appended, so count each new one once. The CLI drops
-  // assistant frames that hold only empty text; they are not counted.
-  let counted = 0;
-  let assistants = 0;
-  const countAssistants = (): number => {
-    for (; counted < frames.length; counted++) {
-      const frame = frames[counted]!;
-      if (
-        frame.type === "assistant" &&
-        frame.message.content.some((block) => block.type !== "text" || block.text !== "")
-      ) {
-        assistants++;
-      }
-    }
-    return assistants;
-  };
   for (const message of messages) {
-    assistantFramesBefore.push(countAssistants());
     switch (message.role) {
       case "system":
         throw replayError("System messages must precede conversation history");
@@ -360,6 +340,5 @@ export function prepareHistory(
       }
     }
   }
-  assistantFramesBefore.push(countAssistants());
-  return { frames, assistantFramesBefore };
+  return { frames };
 }
