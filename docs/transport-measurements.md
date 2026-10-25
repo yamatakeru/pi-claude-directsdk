@@ -126,9 +126,11 @@ Limits:
 - After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour; the Hermes reference mitigates it with an extra turn-start marker. It is not part of this change.
 - A later CLI that changes these placements disables the affected step and shows up in `nativeContext`, not as a failed call.
 
-### Mid-conversation system messages (experimental)
+### Mid-conversation system messages (earlier fork rewrite)
 
-By default, a later Pi prompt or tool change rewrites the leading prompt and tool list, and the next call misses the whole cache. On Claude Code 2.1.303, the CLI ignored `type: "system"` lines on stream-json input and rejected `role: "system"` inside a user line, so the change cannot reach the API through the CLI. The opt-in `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1` therefore rewrites the admitted request in the relay; see [architecture.md](architecture.md#mid-conversation-system-messages-srcmid-conversationts).
+These measurements used the fork's former opt-in relay rewrite (`PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, fork #12). It was removed in fork #18 in favour of upstream v0.2.0's tool changes, which send the same kind of request: the initial prompt and tools, a deferred placeholder, and later changes as `role: system` messages. The numbers below were not re-measured with upstream's implementation.
+
+Without either, a later Pi prompt or tool change rewrites the leading prompt and tool list, and the next call misses the whole cache. On Claude Code 2.1.303, the CLI ignored `type: "system"` lines on stream-json input and rejected `role: "system"` inside a user line, so the change cannot reach the API through the CLI, and the admitted request has to be rewritten in the relay.
 
 A loopback capture covered three changes after the first call: a section update with an added tool, a removed tool, and a redefined tool. For additions and removals, the leading system blocks and the tool-list prefix stayed identical across calls, and each request's prefix through its message breakpoint replayed unchanged. A redefined tool fell back to the current tool list, as designed. Haiku 4.5, which has no mid-conversation system messages, was forwarded collapsed.
 
@@ -144,7 +146,7 @@ The added tool was declared with `defer_loading` and activated by `tool_addition
 
 ### Interactive sessions after the trimmed-result fix
 
-At commit `1fa1c48`, two fresh interactive Pi 1.3.0 sessions ran with the mid-conversation opt-in enabled and Claude Code 2.1.303, driven through the Herdr terminal multiplexer. Across 31 requests, `nativeContext` reported no skipped restoration and `midConversation` reported no fallback. The first user turn after a tool loop read 99.4% from cache after 12 Haiku 5.5 tool calls, and 99.0% after 10 Sonnet 5.5 tool calls.
+At commit `1fa1c48`, two fresh interactive Pi 1.3.0 sessions ran with the earlier mid-conversation opt-in enabled and Claude Code 2.1.303, driven through the Herdr terminal multiplexer. Across 31 requests, `nativeContext` reported no skipped restoration and `midConversation` reported no fallback. The first user turn after a tool loop read 99.4% from cache after 12 Haiku 5.5 tool calls, and 99.0% after 10 Sonnet 5.5 tool calls.
 
 These sessions did not reproduce the long thinking/tool-loop miss ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)), but they were too short to rule it out. They were one-off checks and are not part of the permanent harness.
 

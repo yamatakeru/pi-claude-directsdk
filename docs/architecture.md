@@ -66,7 +66,7 @@ The relay binds an ephemeral loopback port with a random per-request route (`/ad
 
 Every Pi model call replays history through a fresh child, and the CLI adds per-request context: its session-context reminder on the final user or tool-result frame, and today's date split out of its environment message into a trailing system message. Its message cache breakpoint lands on that context. None of it recurs in the next request, so the prefix cached there would never be read.
 
-Before forwarding, the relay's payload hook (`src/native-rewrite.ts`) parses the admitted body once, applies `stabilizeNativeRequest` and then, when enabled, the mid-conversation rewrite, and serializes once. It restores one invariant: everything in request N up to its message breakpoint appears unchanged at the start of request N+1. Pi-owned content is identified structurally, as the final frame `prepareHistory` built. The CLI's wording is never matched, except for the exact date line.
+Before forwarding, the relay's payload hook (`src/native-rewrite.ts`) parses the admitted body once, applies `stabilizeNativeRequest` and then, on supported models, the tool-change system messages, and serializes once. It restores one invariant: everything in request N up to its message breakpoint appears unchanged at the start of request N+1. Pi-owned content is identified structurally, as the final frame `prepareHistory` built. The CLI's wording is never matched, except for the exact date line.
 
 - Tool results: text the CLI appended to the queried tool results is removed, only when the ordered tool-use IDs anchor the whole frame. The CLI also trims surrounding whitespace from the newest tool result before appending, so Pi's original text is restored there too.
 - Later user turns: plain text the CLI placed before the queried frame is dropped, only when the frame occurs exactly once. A continuous native session carries this context once; per-call replay would otherwise repeat it on every call and replay it nowhere.
@@ -80,27 +80,9 @@ The relay reconstructs the upstream assistant message from the SSE stream (`SseC
 
 The failure record (`relayFailure` in the `pi-claude-directsdk/meta` diagnostic, also summarized in the error text) holds the error name, the Node `code`, `syscall`, address, and port. For an `AggregateError`, such as a failed connection to every resolved address, it also holds each inner error's code and address (at most eight). It also records the phase: `request-body`, `connect` (no request bytes reached upstream), `request`, or `response`. It never contains request or response content. Messages are kept only for the relay's own fixed errors. Upstream targets must be HTTPS, except loopback HTTP endpoints. Request bodies are capped at 512 MiB.
 
-### Mid-conversation system messages (`src/mid-conversation.ts`)
+### Tool-change injection boundaries
 
-Experimental and off by default. By default, the provider collapses Pi's system messages into one leading prompt and the current tool list. A prompt section or tool change therefore rewrites the start of the request, and the next call misses the whole cache.
-
-With `PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, the relay rewrites the admitted request into the form Pi's own Anthropic provider uses:
-
-- The leading system block carries Pi's initial prompt.
-- The tool list carries the initial tools, a deferred placeholder, and later tools with `defer_loading`.
-- Each later Pi system message is inserted before the next assistant message as a `role: system` message, carrying its rendered section changes and `tool_addition` / `tool_removal` references.
-
-The CLI still receives the collapsed prompt and every current tool, so the inert MCP server advertises all of them. Insertion points count replayed assistant frames, excluding ones that hold only empty text, because the CLI drops those.
-
-The request is forwarded collapsed, with the reason in the `midConversation` meta diagnostic, in these cases:
-
-- the admitted body is not a Messages request, or the rewrite fails unexpectedly;
-- the transcript has no leading system message, or the tool declarations cannot be built;
-- the route has no mid-conversation system messages (for example Haiku 4.5);
-- the collapsed prompt or tool list does not match exactly;
-- the assistant messages do not match the replay.
-
-When a tool name is redefined, tool changes cannot be expressed by name. Section updates are still sent, and the current tool list is sent as today.
+The relay inserts upstream's mid-conversation system messages (`src/transcript.ts`) after the native-context steps, in the same hook. Insertion points count the assistant frames the CLI sends. A carried assistant frame that holds only empty text is not counted, because the CLI drops it. The plan also records the expected number of assistant frames; a request with a different number throws, and the relay answers 500 before contacting upstream rather than inserting at a shifted boundary.
 
 ### Child supervision (`src/process.ts`)
 
