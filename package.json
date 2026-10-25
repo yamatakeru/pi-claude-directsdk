@@ -1,6 +1,6 @@
 {
   "name": "pi-claude-directsdk",
-  "version": "0.1.7",
+  "version": "0.2.0",
   "type": "module",
   "description": "Claude as a Pi model provider through the unmodified Claude Code executable. Pi owns the transcript and tools; the CLI supplies subscription authentication as a model transport.",
   "license": "MIT",
@@ -50,7 +50,8 @@
   "scripts": {
     "check": "tsc --noEmit",
     "build": "tsc -p tsconfig.build.json",
-    "test": "python3 scripts/verify.py startup",
-    "test:unit": "rm -rf .build/test && tsc -p tsconfig.test.json && node --test --test-timeout=20000 '.build/test/test/*.test.js'"
+    "test": "node --experimental-strip-types --disable-warning=DEP0205 --import ./tests/register.mjs --test \"tests/*.test.ts\"",
+    "test:unit": "rm -rf .build/test && tsc -p tsconfig.test.json && node --test --test-timeout=20000 '.build/test/test/*.test.js'",
+    "verify": "python3 scripts/verify.py startup"
   }
 }

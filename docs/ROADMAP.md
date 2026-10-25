@@ -19,6 +19,8 @@ Build repeatable checks for the behavior that distinguishes DirectSDK:
 
 Prefer a small set of public-boundary checks using real subprocesses and local endpoints over tests coupled to internal implementation. Review and approve each proposed test before adding it.
 
+Current coverage: `npm test` checks admission, replay carriers, environment guards, the usage-credit guard, and the tool-change plan. It uses a fake native child and loopback endpoints. Real-upstream beta acceptance, cancellation, and process-tree behavior remain installed-Pi or manual checks.
+
 Keep routine regression checks offline and free of subscription usage. Use a small, explicitly approved paid verification path for behavior that requires real Claude generation or upstream cache reuse. Local request inspection cannot establish a real cache hit.
 
 Completion criteria: the agreed checks run repeatably, detect violations of these guarantees, and clearly separate offline coverage from paid verification. Document remaining gaps in [testing.md](testing.md).

@@ -21,13 +21,12 @@ import type {
 } from "@earendil-works/pi-ai/compat";
 import { replayError } from "./errors.js";
 import { toolPrefixedName } from "./request.js";
-import {
+import { deepClone, isRecord } from "./types.js";
+import type {
   NativeAssistantMessage,
   NativeCacheControl,
   NativeContentBlock,
   NativeFrame,
-  deepClone,
-  isRecord,
 } from "./types.js";
 
 /** Diagnostics type carrying preserved native assistant blocks. */
@@ -114,6 +113,27 @@ function readCarrier(message: AssistantMessage): {
     messages: deepClone(details["messages"] as unknown as NativeAssistantMessage[]),
     projection: deepClone(details["projection"] as unknown as CarrierProjection),
   };
+}
+
+/**
+ * Number of native assistant frames this Pi message replays as. Carrier
+ * messages can contain more than one native assistant message.
+ */
+export function replayAssistantCount(message: AssistantMessage): number {
+  const carrier = readCarrier(message);
+  if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
+    return carrier.messages.length;
+  }
+  for (const block of message.content) {
+    if (
+      (block.type === "text" && block.text !== "") ||
+      (block.type === "thinking" && block.thinking !== "") ||
+      block.type === "toolCall"
+    ) {
+      return 1;
+    }
+  }
+  return 0;
 }
 
 /**

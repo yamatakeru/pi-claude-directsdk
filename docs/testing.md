@@ -1,8 +1,24 @@
-# Verification through the installed Pi
+# Verification
 
-The repository has no isolated test suite, mocked provider runtime, or fake upstream. The harness runs the operator’s installed `pi` executable with real settings, credentials, tools, and extensions. It uses a private copy of the user’s configuration and replaces only the DirectSDK extension source with the local checkout. This prevents the installed package from overwriting the local code during extension loading.
+Verification has two layers. The offline regression suite runs in seconds on Node 22 and covers transport contracts with a fake `claude` child and loopback endpoints. The installed-Pi harness runs the operator’s real `pi` executable with real settings, credentials, tools, and extensions. It uses a private copy of the user’s configuration and replaces only the DirectSDK extension source with the local checkout. This prevents the installed package from overwriting the local code during extension loading.
 
-## Requirements
+## Offline regression suite
+
+```sh
+npm test
+```
+
+Run it on Node 22. The suite uses `node:test` and needs no subscription credentials. It covers contracts that the installed-Pi harness cannot guard cheaply:
+
+- The admission relay forwards one upstream Messages request and rejects a second locally, including the tool-change beta and request rewrite.
+- The signed-thinking carrier restores only while the visible projection matches.
+- Conflicting auth and backend overrides are rejected without the test bypass.
+- The usage-credit guard stops an overage turn, permits it with `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
+- The tool-change plan emits deferred additions, removals, and assistant-boundary injections only when model metadata supports them.
+
+The tests use a temporary fake executable in the stream tests. They do not prove real Claude generation, native cache reuse, or upstream acceptance of the beta fields. The installed-Pi harness remains the end-to-end gate.
+
+## Harness requirements
 
 - Python 3 and the user’s installed Pi on `PATH`.
 - Claude Code installed and authenticated for paid scenarios.
@@ -12,7 +28,7 @@ Use `--pi /absolute/path/to/pi` or `PI_VERIFY_PI` to select another installed ex
 
 ## Verified environments
 
-The current maintainer installation is Pi 1.3.0, confirmed with `pi --version`. The offline startup scenario passes on this installation with no stderr and no observed Claude child starts. Paid model calls have not been reverified on Pi 1.3.0.
+The current maintainer installation is Pi 1.3.0, confirmed with `pi --version`. The offline startup scenario (`npm run verify`) passes on this installation with no stderr and no observed Claude child starts. Paid model calls have not been reverified on Pi 1.3.0.
 
 Before v0.1.7 was released, both compiled-Pi fixes passed these checks on macOS arm64 with compiled Pi 1.2.0 / Bun 1.3.14 and Claude Code 2.1.281:
 
@@ -31,7 +47,7 @@ The two compiled-Pi fixes have not been verified locally on Linux. Earlier Linux
 ### Offline startup
 
 ```sh
-npm test
+npm run verify
 ```
 
 Equivalent command:
@@ -102,10 +118,10 @@ The observer records real Claude process starts, replay acknowledgments, termina
 ```sh
 npm run check
 npm run build
-npm run test:unit
+npm test
 ```
 
-`check` and `build` cover types and compilation. `test:unit` runs offline fixture tests (`test/`) with `node:test` for the fork's request rewrites and relay failure handling, grouped by fork issue; each test fails when its fix is reverted. The fixtures reproduce request shapes observed from Claude Code 2.1.303 and use only loopback upstreams. Branch and pull request CI run all three. Runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
+The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including the fork's fixture tests for its request rewrites and relay failure handling, grouped by fork issue. Branch, pull request, and release CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
 
 The permanent harness does not yet exercise an in-process `/reload`, forced subprocess stalls, cancellation, or an explicit tool round trip. Temporary checks described above do not extend the supported scenarios.
 
