@@ -9,9 +9,9 @@ This is an unofficial fork of [joaomj/pi-claude-directsdk](https://github.com/jo
 
 ## Requirements
 
-- Pi. This fork is verified with Pi 1.3.0.
+- Pi. This fork is verified with Pi 1.4.0.
 - Node 20 or later for Node-based Pi installations and local development. Compiled Pi uses its bundled runtime.
-- Claude Code `>=2.1.263 <2.2.0` (`QUALIFIED_CLI_RANGE` in `src/models.ts`). This fork is verified with 2.1.303.
+- Claude Code `>=2.1.263 <2.2.0` (`QUALIFIED_CLI_RANGE` in `src/models.ts`). This fork is verified with 2.1.310.
 - A Claude paid plan. The free plan excludes the CLI.
 - A Claude Code login via `claude auth login`.
 
@@ -20,7 +20,7 @@ This is an unofficial fork of [joaomj/pi-claude-directsdk](https://github.com/jo
 Install the verified Claude Code version. The flag allows its executable setup scripts for this command only:
 
 ```sh
-npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.303
+npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.310
 ```
 
 Sign in through the official CLI login:
@@ -35,13 +35,13 @@ Install this fork from Git:
 pi install git:github.com/yamatakeru/pi-claude-directsdk
 ```
 
-This follows `main`. To stay on the last interactively verified commit instead, install `git:github.com/yamatakeru/pi-claude-directsdk@1fa1c48`.
+This follows `main`.
 
 Keep only one DirectSDK extension active. If upstream is installed, remove it first with `pi remove npm:pi-claude-directsdk` (or its Git source); `pi list` shows what is installed.
 
 Start or restart interactive Pi, open `/model`, and wait for the DirectSDK catalog refresh. Select a DirectSDK model. On a fresh install, this step must complete before selecting the model from the command line.
 
-`pi update --models` does not load this extension in Pi 1.3.0; use the interactive model picker for DirectSDK refresh. After a successful refresh, later invocations can use the saved catalog:
+`pi update --models` does not refresh the DirectSDK catalog; use the interactive model picker. After a successful refresh, later invocations can use the saved catalog:
 
 ```sh
 pi --model claude-directsdk/claude-haiku-5-5
@@ -59,7 +59,7 @@ Update the fork explicitly:
 pi update git:github.com/yamatakeru/pi-claude-directsdk
 ```
 
-In Pi 1.3.0, a bare `pi update` updates Pi itself, not its packages. Pinned sources stay pinned; to change a pin or switch back to upstream, `pi remove` the old source and install the new one.
+A bare `pi update` updates Pi itself, not its packages; `pi update --extensions` updates every installed package. Pinned sources stay pinned; to change a pin or switch back to upstream, `pi remove` the old source and install the new one.
 
 Restart Pi after upgrading, then open `/model` and wait for catalog refresh.
 
@@ -76,10 +76,11 @@ Relative to upstream v0.2.0 (`6574117`):
 
 - Changing the thinking level mid-session still causes a near-full cache miss ([#5](https://github.com/yamatakeru/pi-claude-directsdk/issues/5)).
 - After a long tool loop with thinking, the next user turn may miss part of the cache; under investigation ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)).
+- A tool change still causes a full cache miss on models that Pi's model metadata does not mark as supporting mid-conversation tool changes, such as Haiku 4.5 and Sonnet 5, and on any model when a tool is redefined under the same name ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
 
 ### Verification
 
-With Pi 1.3.0, Claude Code 2.1.303 and Haiku 5.5, the second and third requests of a warm run read 98.69% and 99.79% of their input from cache. With the fork's earlier relay-side rewrite of mid-conversation tool changes, since replaced by upstream's, a prompt change and an added tool kept the cached prefix, and the model called the new tool. Interactive sessions with Haiku 5.5 and Sonnet 5.5 stayed near 99% after tool loops. The measurement report has the full numbers and limits for the [warm run](docs/transport-measurements.md#replay-stable-native-context), the [earlier tool-change rewrite](docs/transport-measurements.md#mid-conversation-system-messages-earlier-fork-rewrite) and the [interactive sessions](docs/transport-measurements.md#interactive-sessions-after-the-trimmed-result-fix).
+After the upstream v0.2.0 merge, with Pi 1.4.0, Claude Code 2.1.310 and Haiku 5.5, the second and third requests of a warm run read 98.76% and 99.85% of their input from cache. Earlier checks, before the merge and with Pi 1.3.0 and Claude Code 2.1.303, found the same level in interactive sessions with Haiku 5.5 and Sonnet 5.5 after tool loops, and showed that a prompt change and an added tool kept the cached prefix under the fork's former tool-change rewrite. The measurement report has the full numbers and limits for the [warm run](docs/transport-measurements.md#replay-stable-native-context), the [earlier tool-change rewrite](docs/transport-measurements.md#mid-conversation-system-messages-earlier-fork-rewrite) and the [interactive sessions](docs/transport-measurements.md#interactive-sessions-after-the-trimmed-result-fix).
 
 Cache-read share measures token reuse, not subscription allowance. Pi's per-model costs are estimates from [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing), not subscription charges, and failed or interrupted requests are never reported as free.
 
