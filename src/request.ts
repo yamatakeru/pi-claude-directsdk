@@ -20,6 +20,9 @@ export const TOOL_NAME_PREFIX = `mcp__${MCP_SERVER_NAME}__`;
 /** Explicit test-mode bypass for the subscription env guard. Never set in production. */
 export const TEST_UPSTREAM_ENV = "PI_DIRECTSDK_TEST_UPSTREAM";
 
+/** Opt-in client label for the native child's `cc_entrypoint`. */
+export const ENTRYPOINT_ENV = "CLAUDE_DIRECTSDK_ENTRYPOINT";
+
 const CONFLICTING_API_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
@@ -48,6 +51,25 @@ function promptCacheTtl(env: NodeJS.ProcessEnv): "5m" | "1h" {
     throw new Error("CLAUDE_CODE_PROMPT_CACHE_TTL must be 5m or 1h; unset it to use 1h");
   }
   return ttl;
+}
+
+/**
+ * Client label for the child, opt-in only. An inherited label is always
+ * removed, because a Pi started from inside another Claude client would
+ * otherwise report that client's identity. Without an override the CLI labels
+ * the session itself (`sdk-cli` under `-p`): with Pi's system prompt, Anthropic
+ * rejects or charges any other label as usage-credit traffic (fork #23).
+ */
+function childEntrypoint(env: NodeJS.ProcessEnv): string | undefined {
+  const override = env[ENTRYPOINT_ENV];
+  if (override === undefined || override === "") return undefined;
+  if (!/^[A-Za-z0-9._-]{1,64}$/.test(override)) {
+    throw new Error(
+      `${ENTRYPOINT_ENV} must be 1-64 characters of letters, digits, dot, underscore, or hyphen; ` +
+        "unset it to let Claude Code label the session",
+    );
+  }
+  return override;
 }
 
 /** Cache metadata only; Pi still owns every message and instruction. */
@@ -395,6 +417,12 @@ export function buildChildEnv(options: {
   // Explicitly match the replay anchor: a shorter TTL before a longer native
   // breakpoint is invalid, and native subscription defaults can change.
   env["CLAUDE_CODE_PROMPT_CACHE_TTL"] = promptCacheTtl(env);
+  // Plan usage is metered by this label. See docs/usage.md.
+  const entrypoint = childEntrypoint(env);
+  deleteEnvVar(env, "CLAUDE_CODE_ENTRYPOINT");
+  if (entrypoint !== undefined) {
+    env["CLAUDE_CODE_ENTRYPOINT"] = entrypoint;
+  }
   env["DISABLE_AUTO_COMPACT"] = "1";
   env["DISABLE_COMPACT"] = "1";
   // Pi owns budgets; the native replayed reminder would invalidate cached history.
