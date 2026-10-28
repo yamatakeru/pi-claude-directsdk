@@ -29,7 +29,7 @@ The request transport still loads on the first Claude request. See [docs/startup
 | `CLAUDE_DIRECTSDK_CONFIG_DIR` | Point at a logged-in CLI config directory. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Supply a token from `claude setup-token` in the environment Pi runs in. |
 | `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS` | Set to `1` to allow turns that Claude Code reports as charged to usage credits. Unset or `0` stops later turns after an overage charge. |
-| `CLAUDE_DIRECTSDK_ENTRYPOINT` | Client label sent with each request. Defaults to `pi-claude-directsdk`. Set it to keep another label, or to an empty string to let Claude Code label the session. |
+| `CLAUDE_DIRECTSDK_ENTRYPOINT` | Opt-in client label sent with each request. Unset or empty lets Claude Code label the session (`sdk-cli`). See [plan usage metering](#plan-usage-metering) before setting it. |
 | `PI_DIRECTSDK_PROMPT_HASHES` | Set to `1` to add SHA-256 hashes of the provider-supplied system prompt and tool definitions to message diagnostics. Unset it or set it to `0` to disable hashes. |
 
 Success and failure diagnostics include request-phase timings, replay counts, upstream request-body bytes, and cache-read share. Unobserved milestones and unavailable cache-read shares are `null`. Milestone times are elapsed milliseconds from call start; durations are separate intervals and are not additive. The spawn-to-replay interval includes CLI startup, and first response data is not necessarily the first generated token.
@@ -47,16 +47,19 @@ extension for the same work. See
 [anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074) for the
 controlled measurements and Anthropic's silence on whether the difference is intended.
 
-DirectSDK labels its children `pi-claude-directsdk`, so plan usage is not billed as an SDK app.
-The label is set on the child environment and replaces an inherited value, because a Pi started
-from inside another Claude client would otherwise report that client's identity. Set `CLAUDE_DIRECTSDK_ENTRYPOINT` to
-another label, of 1 to 64 characters of letters, digits, dot, underscore, or hyphen, to report a
-different identity, or set it to an empty string to let Claude Code label the session itself.
+In this fork, DirectSDK leaves the label to Claude Code, which reports `sdk-cli` for headless
+sessions. An inherited label is always removed, because a Pi started from inside another Claude
+client would otherwise report that client's identity. Set `CLAUDE_DIRECTSDK_ENTRYPOINT` to a
+label of 1 to 64 characters of letters, digits, dot, underscore, or hyphen to report another
+identity.
 
-This is a workaround. An unrecognized label currently falls into the CLI's own client bucket,
-which Anthropic can change without notice. If Anthropic classifies unrecognized clients as
-third-party traffic, the [usage-credit guard](#usage-credit-guard) stops later turns, but not
-the first charged one.
+Upstream labels children `pi-claude-directsdk` by default to avoid the faster metering. With Pi's
+system prompt, Anthropic rejected or reroutes every label except `sdk-cli` as usage-credit
+traffic, including first-party `sdk-ts` and `claude-vscode`
+([fork #23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23)). On an account without
+usage credits every request fails; with credits, the
+[usage-credit guard](#usage-credit-guard) stops later turns, but not the first charged one. A
+custom label is therefore opt-in here, and the faster `sdk-cli` metering remains.
 
 ## Cost reporting
 

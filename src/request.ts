@@ -20,10 +20,8 @@ export const TOOL_NAME_PREFIX = `mcp__${MCP_SERVER_NAME}__`;
 /** Explicit test-mode bypass for the subscription env guard. Never set in production. */
 export const TEST_UPSTREAM_ENV = "PI_DIRECTSDK_TEST_UPSTREAM";
 
-/** User override for the client label the native child reports. */
+/** Opt-in client label for the native child's `cc_entrypoint`. */
 export const ENTRYPOINT_ENV = "CLAUDE_DIRECTSDK_ENTRYPOINT";
-/** Client label for `cc_entrypoint`. Unlabelled children fall into an SDK bucket. */
-export const DEFAULT_ENTRYPOINT = "pi-claude-directsdk";
 
 const CONFLICTING_API_VARS = [
   "ANTHROPIC_API_KEY",
@@ -56,18 +54,19 @@ function promptCacheTtl(env: NodeJS.ProcessEnv): "5m" | "1h" {
 }
 
 /**
- * Client label for the child. An inherited label is replaced, because a Pi
- * started from inside another Claude client would otherwise report that
- * client's identity. An empty override leaves the label to the CLI.
+ * Client label for the child, opt-in only. An inherited label is always
+ * removed, because a Pi started from inside another Claude client would
+ * otherwise report that client's identity. Without an override the CLI labels
+ * the session itself (`sdk-cli` under `-p`): with Pi's system prompt, Anthropic
+ * rejects or charges any other label as usage-credit traffic (fork #23).
  */
 function childEntrypoint(env: NodeJS.ProcessEnv): string | undefined {
   const override = env[ENTRYPOINT_ENV];
-  if (override === undefined) return DEFAULT_ENTRYPOINT;
-  if (override === "") return undefined;
+  if (override === undefined || override === "") return undefined;
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(override)) {
     throw new Error(
       `${ENTRYPOINT_ENV} must be 1-64 characters of letters, digits, dot, underscore, or hyphen; ` +
-        `unset it for ${DEFAULT_ENTRYPOINT}, or set it to an empty string to let Claude Code label the session`,
+        "unset it to let Claude Code label the session",
     );
   }
   return override;
@@ -420,9 +419,8 @@ export function buildChildEnv(options: {
   env["CLAUDE_CODE_PROMPT_CACHE_TTL"] = promptCacheTtl(env);
   // Plan usage is metered by this label. See docs/usage.md.
   const entrypoint = childEntrypoint(env);
-  if (entrypoint === undefined) {
-    delete env["CLAUDE_CODE_ENTRYPOINT"];
-  } else {
+  deleteEnvVar(env, "CLAUDE_CODE_ENTRYPOINT");
+  if (entrypoint !== undefined) {
     env["CLAUDE_CODE_ENTRYPOINT"] = entrypoint;
   }
   env["DISABLE_AUTO_COMPACT"] = "1";
