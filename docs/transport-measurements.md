@@ -114,7 +114,7 @@ A paid three-request `warm` run then went through installed Pi 1.3.0 with Claude
 
 Request 1 read the system and tools prefix cached by earlier runs. Requests 2 and 3 read the whole previous request and wrote only the new turn. Before this change, the previous call's final frame was written again on every call, and call 2 re-wrote the opening turn.
 
-After the upstream v0.2.0 merge (fork #19, commit `0700cf7`), the same run on installed Pi 1.4.0 with Claude Code 2.1.310 started from an empty cache and read 0%, 98.76% and 99.85% (28,705 / 357 / 41 cache-write tokens). Each request again admitted one upstream request with stable Pi prompt and tool hashes. After the upstream v0.3.0 merge, with Claude Code 2.1.312 and the CLI's own `sdk-cli` label ([fork #23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23)), it read 0%, 98.64% and 99.87% (25,953 / 353 / 30 cache-write tokens), again with stable hashes.
+After the upstream v0.2.0 merge (fork #19, commit `0700cf7`), the same run on installed Pi 1.4.0 with Claude Code 2.1.310 started from an empty cache and read 0%, 98.76% and 99.85% (28,705 / 357 / 41 cache-write tokens). Each request again admitted one upstream request with stable Pi prompt and tool hashes. After the upstream v0.3.0 merge, with Claude Code 2.1.312 and the CLI's own `sdk-cli` label ([fork #23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23)), it read 0%, 98.64% and 99.87% (25,953 / 353 / 30 cache-write tokens), again with stable hashes. After the upstream v0.3.1 merge, with upstream's default `pi-claude-directsdk` label and its replacement `<docs>` section, it read 0%, 98.64% and 99.87% (25,588 / 349 / 30 cache-write tokens), again with stable hashes.
 
 Three options were considered for the reminder:
 

@@ -50,26 +50,27 @@ A bare `pi update` updates Pi itself, not its packages; `pi update --extensions`
 
 ## Fork changes
 
-Relative to upstream v0.3.0 (`a495bba`):
+Relative to upstream v0.3.1 (`4371343`):
 
 - **Cache reuse across calls** (default). Every call replays history through a fresh CLI process, and the CLI adds per-request context (a session reminder, the date line) that never recurs. The relay moves or drops that context, so each request's cached prefix is read by the next one ([#1](https://github.com/yamatakeru/pi-claude-directsdk/issues/1), [#13](https://github.com/yamatakeru/pi-claude-directsdk/pull/13)).
 - **Thinking level honoured** (default). Pi's thinking level reaches the CLI as `--effort`; an inherited `CLAUDE_CODE_EFFORT_LEVEL` no longer overrides it ([#2](https://github.com/yamatakeru/pi-claude-directsdk/issues/2)).
 - **Clearer relay failures** (default). Connection errors report codes, addresses and the failing phase instead of a bare `AggregateError`, and a connection dropped mid-response ends the call instead of hanging it ([#4](https://github.com/yamatakeru/pi-claude-directsdk/issues/4), [#7](https://github.com/yamatakeru/pi-claude-directsdk/issues/7)).
-- **No custom client label** (default). Upstream reports `CLAUDE_CODE_ENTRYPOINT=pi-claude-directsdk`; with Pi's system prompt, Anthropic rejects or charges that as usage-credit traffic. The fork leaves the label to Claude Code (`sdk-cli`) and still removes an inherited one; `CLAUDE_DIRECTSDK_ENTRYPOINT` sets a label explicitly ([#23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23)).
+- **Inherited client label removed in any case** (default). On Windows, an inherited `CLAUDE_CODE_ENTRYPOINT` with different letter case is removed too, so it cannot shadow the label DirectSDK sets, or survive an empty `CLAUDE_DIRECTSDK_ENTRYPOINT`.
 - **Tool changes on the right assistant boundary** (default). Upstream's mid-conversation tool changes now skip carried assistant frames that the CLI drops, and a request whose assistant messages differ from the replay fails before reaching upstream instead of placing tool changes at the wrong point ([#13](https://github.com/yamatakeru/pi-claude-directsdk/pull/13), [#18](https://github.com/yamatakeru/pi-claude-directsdk/issues/18)).
 
 Upstream's maintainer workflows (AI review, auto-assign, upstream watch) are kept unchanged in `.github/workflows` but disabled in this repository.
 
 ### Known issues
 
-- Headless `sdk-cli` sessions may use the 5-hour window faster than the interactive CLI ([anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074)); the fork does not relabel them ([#23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23)).
+- Plan billing depends on two undocumented Anthropic checks: the custom client label must stay out of the SDK bucket, and the replacement `<docs>` section must not look like Pi's prompt ([#23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23), upstream [#27](https://github.com/joaomj/pi-claude-directsdk/issues/27)). If rejections return, the fork can go back to the `sdk-cli` label; if [anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074) is fixed, the label and the prompt change can both go.
+- A session that did not start on a DirectSDK model, including one started before updating to this version, is rejected when continued on DirectSDK; start a new session or set `CLAUDE_DIRECTSDK_ENTRYPOINT=` for it ([#28](https://github.com/yamatakeru/pi-claude-directsdk/issues/28)).
 - Changing the thinking level mid-session still causes a near-full cache miss ([#5](https://github.com/yamatakeru/pi-claude-directsdk/issues/5)).
 - After a long tool loop with thinking, the next user turn may miss part of the cache; under investigation ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)).
 - A tool change still causes a full cache miss on models that Anthropic's documentation does not list for mid-conversation tool changes, such as Haiku 4.5 and Sonnet 5, and on any model when a tool is redefined under the same name ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
 
 ### Verification
 
-After the upstream v0.3.0 merge, with Pi 1.4.0, Claude Code 2.1.312 and Haiku 5.5, the second and third requests of a warm run read 98.64% and 99.87% of their input from cache (98.76% and 99.85% after v0.2.0 with Claude Code 2.1.310). Earlier checks, before the merge and with Pi 1.3.0 and Claude Code 2.1.303, found the same level in interactive sessions with Haiku 5.5 and Sonnet 5.5 after tool loops, and showed that a prompt change and an added tool kept the cached prefix under the fork's former tool-change rewrite. The measurement report has the full numbers and limits for the [warm run](docs/transport-measurements.md#replay-stable-native-context), the [earlier tool-change rewrite](docs/transport-measurements.md#mid-conversation-system-messages-earlier-fork-rewrite) and the [interactive sessions](docs/transport-measurements.md#interactive-sessions-after-the-trimmed-result-fix).
+After the upstream v0.3.1 merge, with Pi 1.4.0, Claude Code 2.1.312, Haiku 5.5 and upstream's default client label, the second and third requests of a warm run read 98.64% and 99.87% of their input from cache, as after v0.3.0 with the `sdk-cli` label (98.76% and 99.85% after v0.2.0 with Claude Code 2.1.310). Earlier checks, before the merge and with Pi 1.3.0 and Claude Code 2.1.303, found the same level in interactive sessions with Haiku 5.5 and Sonnet 5.5 after tool loops, and showed that a prompt change and an added tool kept the cached prefix under the fork's former tool-change rewrite. The measurement report has the full numbers and limits for the [warm run](docs/transport-measurements.md#replay-stable-native-context), the [earlier tool-change rewrite](docs/transport-measurements.md#mid-conversation-system-messages-earlier-fork-rewrite) and the [interactive sessions](docs/transport-measurements.md#interactive-sessions-after-the-trimmed-result-fix).
 
 ## Comparison with other Claude providers
 
