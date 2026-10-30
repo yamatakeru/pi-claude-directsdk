@@ -63,6 +63,7 @@ Upstream's maintainer workflows (AI review, auto-assign, upstream watch) are kep
 ### Known issues
 
 - Plan billing depends on two undocumented Anthropic checks: the custom client label must stay out of the SDK bucket, and the replacement `<docs>` section must not look like Pi's prompt ([#23](https://github.com/yamatakeru/pi-claude-directsdk/issues/23), upstream [#27](https://github.com/joaomj/pi-claude-directsdk/issues/27)). If rejections return, the fork can go back to the `sdk-cli` label; if [anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074) is fixed, the label and the prompt change can both go.
+- A session that did not start on a DirectSDK model, including one started before updating to this version, is rejected when continued on DirectSDK; start a new session or set `CLAUDE_DIRECTSDK_ENTRYPOINT=` for it ([#28](https://github.com/yamatakeru/pi-claude-directsdk/issues/28)).
 - Changing the thinking level mid-session still causes a near-full cache miss ([#5](https://github.com/yamatakeru/pi-claude-directsdk/issues/5)).
 - After a long tool loop with thinking, the next user turn may miss part of the cache; under investigation ([#10](https://github.com/yamatakeru/pi-claude-directsdk/issues/10)).
 - A tool change still causes a full cache miss on models that Anthropic's documentation does not list for mid-conversation tool changes, such as Haiku 4.5 and Sonnet 5, and on any model when a tool is redefined under the same name ([#3](https://github.com/yamatakeru/pi-claude-directsdk/issues/3)).
