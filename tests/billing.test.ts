@@ -174,10 +174,9 @@ test("stops after an overage charge unless usage credits are allowed", async (t)
   assert.match(rejection.error.errorMessage ?? "", /^Claude Code billing: .*usage credits/);
   assert.equal(isRetryableAssistantError(rejection.error), false);
 
-  // #20: a successful reply that quotes a rejection phrase is the model's text, not a rejection.
   const quote = "You're out of extra usage, as the docs say.";
   const quoted = await run(false, false, false, quote);
   const reply = quoted.find((event) => event.type === "done");
-  assert.ok(reply && reply.type === "done", JSON.stringify(quoted.find((event) => event.type === "error")));
+  assert.ok(reply && reply.type === "done");
   assert.equal(reply.message.content.some((block) => block.type === "text" && block.text === quote), true);
 });
