@@ -5,11 +5,9 @@ import { getDocsPath, getExamplesPath, getReadmePath, type ExtensionAPI } from "
 import { createDirectSdkProvider, PROVIDER_ID, streamSimple } from "../../src/provider.js";
 
 /**
- * Pi's default prompt routes the model to Pi's docs by name. Anthropic rejects that
- * prompt as third-party app usage when the child reports a client label other than
- * Claude Code's SDK default, so this provider sends the same guidance as prose instead.
- * It keeps the README, docs, and examples paths and the pointer to the extension samples,
- * and routes topics through docs/docs.json, but leaves out the topic-to-path list and Pi's bullet layout, which match the fingerprint (#30).
+ * Pi's default docs section is rejected as third-party app usage when the child reports a
+ * client label other than Claude Code's SDK default. This sends the same guidance as prose,
+ * without Pi's list of topics and doc paths, which is what triggers the rejection.
  */
 const DOCS_SECTION =
   "This session runs inside Pi. If the user asks about Pi itself, for example its SDK, extensions, themes, " +
@@ -22,8 +20,8 @@ const DOCS_SECTION =
   "environment variables, MCP servers, and codemode. " +
   `For extensions, also read the matching sample under ${getExamplesPath()}/extensions, ` +
   "since the extension guide treats those samples as the implementation reference. " +
-  "Before building anything for Pi, read the guides and " +
-  "samples that apply, read each guide to the end, and follow the links it gives to related guides.";
+  "Before building anything for Pi, read the guides and samples that apply, read each guide to the end, " +
+  "and follow the links it gives to related guides.";
 
 export default function (pi: ExtensionAPI) {
   let report = (message: string): void => { console.error(message); };
