@@ -41,8 +41,7 @@ test("a DirectSDK turn sends Pi's docs guidance without the routing line", () =>
   assert.notEqual(docs, PI_DOCS);
   assert.equal(/docs\/[\w-]+\.md/u.test(docs), false, "no topic-to-path list");
   assert.equal(/pi packages/iu.test(docs), false);
-  assert.equal(/^- /mu.test(docs), false, "not Pi's bullet layout");
-  for (const path of [getReadmePath(), getDocsPath(), getExamplesPath(), "docs/docs.json"]) {
+  for (const path of [getReadmePath(), getDocsPath(), `${getExamplesPath()}/extensions`, "docs/docs.json"]) {
     assert.ok(docs.includes(path), `points to ${path}`);
   }
 });

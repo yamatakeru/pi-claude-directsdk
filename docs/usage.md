@@ -55,10 +55,9 @@ different identity, or set it to an empty string to let Claude Code label the se
 
 A custom label alone is not accepted for every prompt. Anthropic also rejects a request whose
 system prompt looks like another agent harness as third-party app usage, so while a DirectSDK
-model is active Pi's `<docs>` section is replaced with the same guidance written as prose: the
-README, docs, and examples paths, with `docs/docs.json` as the index instead of Pi's list of
-topics and doc paths. Other providers keep Pi's prompt, and a custom prompt from `SYSTEM.md` is
-left alone.
+model is active Pi's `<docs>` section is replaced with the same guidance written as prose, with
+`docs/docs.json` as the index instead of Pi's list of topics and doc paths. Other providers keep
+Pi's prompt, and a custom prompt from `SYSTEM.md` is left alone.
 
 Both parts are a workaround for an undocumented check. An unrecognized label currently falls into
 the CLI's own client bucket, and the accepted prompt wording can change, so re-verify after a Pi
