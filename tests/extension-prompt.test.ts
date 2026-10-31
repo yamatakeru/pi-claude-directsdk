@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { getDocsPath, getExamplesPath, getReadmePath, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import createExtension from "../extensions/claude-directsdk/index.ts";
 import { PROVIDER_ID } from "../src/models.ts";
 
@@ -35,13 +35,16 @@ function docsSectionAfterStart(
   return options.sections["docs"];
 }
 
-test("a DirectSDK turn sends a docs pointer instead of Pi's routing line", () => {
+test("a DirectSDK turn sends Pi's docs guidance without the routing line", () => {
   const docs = docsSectionAfterStart(PROVIDER_ID, { sections: { docs: PI_DOCS } });
   assert.ok(docs, "the docs section is still present");
   assert.notEqual(docs, PI_DOCS);
-  assert.equal(docs.includes("docs/custom-provider.md"), false);
-  assert.equal(docs.includes("pi packages"), false);
-  assert.match(docs, /documentation/u);
+  assert.equal(/docs\/[\w-]+\.md/u.test(docs), false, "no topic-to-path list");
+  assert.equal(/pi packages/iu.test(docs), false);
+  assert.equal(/^- /mu.test(docs), false, "not Pi's bullet layout");
+  for (const path of [getReadmePath(), getDocsPath(), getExamplesPath(), "docs/docs.json"]) {
+    assert.ok(docs.includes(path), `points to ${path}`);
+  }
 });
 
 test("another provider keeps Pi's default docs section", () => {
