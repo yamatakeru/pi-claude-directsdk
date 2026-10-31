@@ -3,8 +3,8 @@
  *
  * Mirrors `@earendil-works/pi-coding-agent` 0.87.1
  * (`dist/core/extensions/types.d.ts`) for exactly the surface this project
- * uses. The real package supplies these at runtime; `getDocsPath` is also
- * imported as a value, so the host must export it. Re-check the definitions
+ * uses. The real package supplies these at runtime; the path getters are also
+ * imported as values, so the host must export them. Re-check the definitions
  * when the pinned Pi version changes.
  */
 
@@ -86,6 +86,12 @@ declare module "@earendil-works/pi-coding-agent" {
 
   /** Absolute path to the Pi documentation directory shipped with the host. */
   export function getDocsPath(): string;
+
+  /** Absolute path to the Pi README shipped with the host. */
+  export function getReadmePath(): string;
+
+  /** Absolute path to the Pi examples directory shipped with the host. */
+  export function getExamplesPath(): string;
 
   /** Prompt state Pi hands the agent loop before the first turn. */
   export interface BeforeAgentStartEvent {
