@@ -48,10 +48,11 @@ for await (const line of input) {
     console.log(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true, usage }));
     continue;
   }
+  const text = process.env.FAKE_TEXT || "ok";
   const events = [
     { type: "message_start", message: { id: "msg_test", role: "assistant", content: [], usage } },
     { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
+    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
     { type: "content_block_stop", index: 0 },
     { type: "message_delta", delta: { stop_reason: "end_turn" }, usage },
     { type: "message_stop" },
@@ -59,7 +60,7 @@ for await (const line of input) {
   for (const event of events) console.log(JSON.stringify({ type: "stream_event", event }));
   console.log(JSON.stringify({
     type: "assistant",
-    message: { id: "msg_test", role: "assistant", content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage },
+    message: { id: "msg_test", role: "assistant", content: [{ type: "text", text }], stop_reason: "end_turn", usage },
   }));
   console.log(JSON.stringify({
     type: "rate_limit_event",
@@ -75,6 +76,7 @@ for await (const line of input) {
     subtype: "success",
     is_error: false,
     num_turns: 1,
+    result: text,
     usage,
     total_cost_usd: 0,
   }));
@@ -133,6 +135,7 @@ test("stops after an overage charge unless usage credits are allowed", async (t)
     overage: boolean,
     allow: boolean,
     rejection = false,
+    text = "",
   ): Promise<AssistantMessageEvent[]> => {
     const events: AssistantMessageEvent[] = [];
     const stream = streamClaudeDirectSdk(model(), context, {
@@ -144,6 +147,7 @@ test("stops after an overage charge unless usage credits are allowed", async (t)
         CLAUDE_CODE_PROMPT_CACHE_TTL: "1h",
         FAKE_OVERAGE: overage ? "1" : "0",
         FAKE_REJECTION: rejection ? "1" : "0",
+        FAKE_TEXT: text,
         [ALLOW_USAGE_CREDITS_ENV]: allow ? "1" : "",
       },
     }, deps);
@@ -169,4 +173,11 @@ test("stops after an overage charge unless usage credits are allowed", async (t)
   assert.ok(rejection && rejection.type === "error");
   assert.match(rejection.error.errorMessage ?? "", /^Claude Code billing: .*usage credits/);
   assert.equal(isRetryableAssistantError(rejection.error), false);
+
+  // #20: a successful reply that quotes a rejection phrase is the model's text, not a rejection.
+  const quote = "You're out of extra usage, as the docs say.";
+  const quoted = await run(false, false, false, quote);
+  const reply = quoted.find((event) => event.type === "done");
+  assert.ok(reply && reply.type === "done", JSON.stringify(quoted.find((event) => event.type === "error")));
+  assert.equal(reply.message.content.some((block) => block.type === "text" && block.text === quote), true);
 });

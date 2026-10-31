@@ -790,8 +790,9 @@ async function executeCall(
     }
 
     const denialHandled = relay.denied > 0 || authoritative.stop_reason === "refusal";
+    // On success, `result.result` is the model's reply, which may quote a rejection phrase.
     const requestRejection = usageCreditsRejectionError(
-      [relay.errorText(), nativeErrorText, resultErrors].filter(Boolean).join("\n"),
+      [relay.errorText(), nativeErrorText, result.is_error ? resultErrors : undefined].filter(Boolean).join("\n"),
     );
     if (requestRejection) {
       throw requestRejection;
