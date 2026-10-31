@@ -791,7 +791,7 @@ async function executeCall(
 
     const denialHandled = relay.denied > 0 || authoritative.stop_reason === "refusal";
     const requestRejection = usageCreditsRejectionError(
-      [relay.errorText(), nativeErrorText, resultErrors].filter(Boolean).join("\n"),
+      [relay.errorText(), nativeErrorText, result.is_error ? resultErrors : undefined].filter(Boolean).join("\n"),
     );
     if (requestRejection) {
       throw requestRejection;
