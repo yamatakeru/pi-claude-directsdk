@@ -1,6 +1,6 @@
 # Verification
 
-Verification has two layers. The offline regression suite runs in seconds on Node 22 and covers transport contracts with a fake `claude` child and loopback endpoints. The installed-Pi harness runs the operator’s real `pi` executable with real settings, credentials, tools, and extensions. It uses a private copy of the user’s configuration and replaces only the DirectSDK extension source with the local checkout. This prevents the installed package from overwriting the local code during extension loading.
+Verification has two layers. The offline regression suite runs in seconds on Node 22 and covers transport contracts with a fake `claude` child and loopback endpoints. The installed-Pi harness runs the operator’s real `pi` executable with real settings, credentials, tools, and extensions. It uses a private copy of the user’s configuration and replaces only the Claude Native extension source with the local checkout. This prevents the installed package from overwriting the local code during extension loading.
 
 ## Offline regression suite
 
@@ -13,7 +13,7 @@ Run it on Node 22. The suite uses `node:test` and needs no subscription credenti
 - The admission relay forwards one upstream Messages request and rejects a second locally, including the tool-change beta and request rewrite.
 - The signed-thinking carrier restores only while the visible projection matches.
 - Conflicting auth and backend overrides are rejected without the test bypass.
-- The usage-credit guard stops an overage turn, permits it with `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
+- The usage-credit guard stops an overage turn, permits it with `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
 - The tool-change plan emits deferred additions, removals, and assistant-boundary injections only when model metadata supports them.
 
 The tests use a temporary fake executable in the stream tests. They do not prove real Claude generation, native cache reuse, or upstream acceptance of the beta fields. The installed-Pi harness remains the end-to-end gate.
@@ -34,7 +34,7 @@ Before v0.1.7 was released, both compiled-Pi fixes passed these checks on macOS 
 
 - The emitted MCP helper command completed initialization and tool listing, and denied native tool execution. The pre-fix command started Pi instead and failed in an empty offline configuration.
 - The real CLI discovery flow returned seven picker models under Node 26.10.0 and compiled Pi. The pre-fix compiled runtime failed during server cleanup.
-- The compiled Pi model picker completed live catalog refresh in a private configuration. A separate offline process listed 13 DirectSDK entries, including aliases.
+- The compiled Pi model picker completed live catalog refresh in a private configuration. A separate offline process listed 13 Claude Native entries, including aliases.
 - Six paid calls to `claude-haiku-4-5-20251001` covered a fresh response and a four-turn conversation. The conversation remembered a marker, read a real file through Pi's `read` tool, recalled both values, and recalled them again after restarting Pi and resuming.
 - Each model call in the four-turn conversation admitted one upstream request with none blocked. The conversation produced no unintended Pi sessions or stderr errors.
 
@@ -102,14 +102,14 @@ The summary reports wall time, token usage, cache-read share, phase timings, rep
 
 ## Options and safety
 
-- `--model provider/model` selects the model. The default is `claude-directsdk/claude-haiku-5-5`.
+- `--model provider/model` selects the model. The default is `claude-native/claude-haiku-5-5`.
 - `--extension PATH` selects the extension. The default is this checkout’s entry point.
 - `--timeout SECONDS` bounds the scenario. The default is 120 seconds.
 - `--paid` explicitly approves real model requests. Without it, paid scenarios refuse to run.
 
 Run from the same project directory as the original session. Existing tool permissions and extension behavior still apply. The verification prompt asks the model not to call tools, but the harness does not replace the user’s tool inventory.
 
-Private artifacts go to `/tmp/pi-directsdk-verify-*`. The harness removes copied configuration, credentials, input snapshots, and Pi-generated test sessions after the run. It retains summaries and bounded native error diagnostics. It does not save model responses, credentials, or successful native transcript records. Native errors can quote input fragments; inspect the diagnostics before sharing them.
+Private artifacts go to `/tmp/pi-claude-native-verify-*`. The harness removes copied configuration, credentials, input snapshots, and Pi-generated test sessions after the run. It retains summaries and bounded native error diagnostics. It does not save model responses, credentials, or successful native transcript records. Native errors can quote input fragments; inspect the diagnostics before sharing them.
 
 The observer records real Claude process starts, replay acknowledgments, terminal result errors, and exits. It does not substitute native responses or alter the provider request. For the fresh and session scenarios, automatic Pi retries can consume additional allowance if enabled in the user's settings. The warm scenario explicitly disables them and installs its request-budget guard.
 
@@ -121,7 +121,7 @@ npm run build
 npm test
 ```
 
-The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including the fork's fixture tests for its request rewrites and relay failure handling, grouped by fork issue. Branch, pull request, and release CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
+The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including fixture tests for the request rewrites and relay failure handling, grouped by issue. Branch and pull request CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
 
 The permanent harness does not yet exercise an in-process `/reload`, forced subprocess stalls, cancellation, or an explicit tool round trip. Temporary checks described above do not extend the supported scenarios.
 

@@ -30,7 +30,9 @@ import type {
 } from "./types.js";
 
 /** Diagnostics type carrying preserved native assistant blocks. */
-export const CARRIER_TYPE = "pi-claude-directsdk/native";
+export const CARRIER_TYPE = "pi-claude-native/native";
+/** Carrier type written before the rename; sessions saved then still replay their signed thinking. */
+const LEGACY_CARRIER_TYPE = "pi-claude-directsdk/native";
 const CARRIER_VERSION = 1;
 
 export interface CarrierProjection {
@@ -97,7 +99,7 @@ function readCarrier(message: AssistantMessage): {
 } | null {
   const carriers = (message.diagnostics ?? []).filter(
     (d): d is AssistantMessageDiagnostic =>
-      isRecord(d) && d["type"] === CARRIER_TYPE,
+      isRecord(d) && (d["type"] === CARRIER_TYPE || d["type"] === LEGACY_CARRIER_TYPE),
   );
   if (carriers.length !== 1) {
     return null;

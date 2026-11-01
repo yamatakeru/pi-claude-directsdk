@@ -14,7 +14,7 @@ import type {
 } from "@earendil-works/pi-ai/compat";
 import { NATIVE_TOOL_CHANGES_BETA } from "../src/transcript.ts";
 import { PROVIDER_ID } from "../src/models.ts";
-import { defaultDeps, streamClaudeDirectSdk, type CallDeps } from "../src/stream.ts";
+import { defaultDeps, streamClaudeNative, type CallDeps } from "../src/stream.ts";
 
 const FAKE_CLAUDE = `#!/usr/bin/env node
 import { readFileSync } from "node:fs";
@@ -74,9 +74,9 @@ function model(): Model<Api> {
   return {
     id: "claude-opus-5",
     name: "Opus",
-    api: "claude-directsdk" as Api,
+    api: "claude-native" as Api,
     provider: PROVIDER_ID,
-    baseUrl: "process://claude-directsdk",
+    baseUrl: "process://claude-native",
     reasoning: true,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -113,7 +113,7 @@ test("streams a removed tool without rewriting the initial request prefix", asyn
   const address = upstream.address();
   assert.ok(address && typeof address !== "string");
 
-  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-directsdk-tools-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-claude-native-tools-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const executable = join(root, "fake-claude.mjs");
   await writeFile(executable, FAKE_CLAUDE, "utf8");
@@ -132,7 +132,7 @@ test("streams a removed tool without rewriting the initial request prefix", asyn
       { role: "system", content: "beta is available", toolsAdded: [beta], timestamp: 2 },
       {
         role: "assistant",
-        api: "claude-directsdk",
+        api: "claude-native",
         provider: PROVIDER_ID,
         model: "claude-opus-5",
         content: [{ type: "text", text: "one" }],
@@ -146,11 +146,11 @@ test("streams a removed tool without rewriting the initial request prefix", asyn
   } as unknown as TranscriptContext;
 
   const events: AssistantMessageEvent[] = [];
-  const stream = streamClaudeDirectSdk(model(), context, {
+  const stream = streamClaudeNative(model(), context, {
     timeoutMs: 5_000,
     env: {
-      PI_DIRECTSDK_TEST_UPSTREAM: "1",
-      CLAUDE_DIRECTSDK_COMMAND: executable,
+      PI_CLAUDE_NATIVE_TEST_UPSTREAM: "1",
+      PI_CLAUDE_NATIVE_COMMAND: executable,
       ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`,
       DISABLE_PROMPT_CACHING: "0",
       DISABLE_PROMPT_CACHING_OPUS: "0",

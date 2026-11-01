@@ -212,7 +212,7 @@ export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSig
         const live = picker.find(row => row.id === id);
         const model: ChatModel = {
           id, name: `${link.name} (subscription${live ? "" : "; not in CLI picker"})`,
-          api: PROVIDER_ID, provider: PROVIDER_ID, baseUrl: "process://claude-directsdk",
+          api: PROVIDER_ID, provider: PROVIDER_ID, baseUrl: "process://claude-native",
           reasoning: thinking !== "Not supported",
           thinkingLevelMap: thinkingMap(link.name, thinking, value("Default effort"), live, effort),
           input: inputs === "Text → text" ? ["text"] : ["text", "image"],

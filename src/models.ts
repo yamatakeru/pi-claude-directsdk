@@ -1,5 +1,5 @@
 /** Claude Code transport identity and version qualification. */
-export const PROVIDER_ID = "claude-directsdk";
+export const PROVIDER_ID = "claude-native";
 
 /** Re-run the transport gate before widening this range. */
 export const QUALIFIED_CLI_RANGE = ">=2.1.263 <2.2.0";

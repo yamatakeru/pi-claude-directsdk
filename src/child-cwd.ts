@@ -27,7 +27,7 @@ export function stableChildCwd(): string {
     : process.platform === "darwin"
       ? join(homedir(), "Library", "Caches")
       : join(homedir(), ".cache"));
-  const root = join(base, "pi-claude-directsdk");
+  const root = join(base, "pi-claude-native");
   privateDirectory(root);
   const cwd = join(root, "child");
   privateDirectory(cwd);

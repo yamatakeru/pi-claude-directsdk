@@ -1,8 +1,8 @@
 blank_issues_enabled: false
 contact_links:
   - name: Report a security vulnerability
-    url: https://github.com/joaomj/pi-claude-directsdk/security/advisories/new
+    url: https://github.com/yamatakeru/pi-claude-native/security/advisories/new
     about: Report vulnerabilities privately. Do not disclose them in a public issue.
   - name: Troubleshooting and documentation
-    url: https://github.com/joaomj/pi-claude-directsdk/blob/main/docs/troubleshooting.md
+    url: https://github.com/yamatakeru/pi-claude-native/blob/main/docs/troubleshooting.md
     about: Check installation, authentication, and configuration guidance before opening an issue.

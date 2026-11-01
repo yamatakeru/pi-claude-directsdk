@@ -21,8 +21,8 @@ def arguments():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scenario", choices=("startup", "fresh", "session", "warm"))
     parser.add_argument("--pi", default=os.environ.get("PI_VERIFY_PI", "pi"), help="Installed Pi executable")
-    parser.add_argument("--extension", type=Path, default=ROOT / "extensions/claude-directsdk/index.ts")
-    parser.add_argument("--model", default="claude-directsdk/claude-haiku-5-5")
+    parser.add_argument("--extension", type=Path, default=ROOT / "extensions/claude-native/index.ts")
+    parser.add_argument("--model", default="claude-native/claude-haiku-5-5")
     parser.add_argument("--session", type=Path, help="Existing session to snapshot and fork")
     parser.add_argument("--paid", action="store_true", help="Approve real model requests and subscription usage")
     parser.add_argument("--dry-run", action="store_true", help="Warm scenario: initialize RPC and its request budget without sending model prompts")
@@ -32,8 +32,8 @@ def arguments():
         parser.error("--dry-run is only supported by warm")
     if args.scenario != "startup" and not args.paid and not args.dry_run:
         parser.error("fresh, session, and warm require --paid; they make real model requests")
-    if args.scenario == "warm" and not args.model.startswith("claude-directsdk/"):
-        parser.error("warm requires --model claude-directsdk/MODEL")
+    if args.scenario == "warm" and not args.model.startswith("claude-native/"):
+        parser.error("warm requires --model claude-native/MODEL")
     if args.scenario == "session" and args.session is None:
         parser.error("session requires --session PATH")
     if not math.isfinite(args.timeout) or args.timeout <= 0:
@@ -49,7 +49,7 @@ def run(args):
     if executable is None:
         raise RuntimeError(f"Pi executable not found: {args.pi}; set --pi to your installed executable")
     extension = args.extension.resolve(strict=True)
-    directory = Path(tempfile.mkdtemp(prefix="pi-directsdk-verify-"))
+    directory = Path(tempfile.mkdtemp(prefix="pi-claude-native-verify-"))
     os.chmod(directory, 0o700)
     log = directory / "summary.jsonl"
 
@@ -64,7 +64,7 @@ def run(args):
     try:
         env = dict(os.environ)
         # Pi loads CLI extensions before configured packages. A configured installed
-        # copy would overwrite the working checkout. Select only one DirectSDK copy.
+        # copy would overwrite the working checkout. Select only one copy of this extension.
         original_agent = Path(env.get("PI_CODING_AGENT_DIR", Path.home() / ".pi/agent")).expanduser().resolve(strict=True)
         agent = directory / "agent"
         agent.mkdir()
@@ -79,11 +79,11 @@ def run(args):
                 target.symlink_to(source, target_is_directory=source.is_dir())
         settings_path = agent / "settings.json"
         settings = json.loads(settings_path.read_text()) if settings_path.exists() else {}
-        def is_directsdk(resource):
+        def is_this_extension(resource):
             source = resource.get("source", "") if isinstance(resource, dict) else resource
-            return isinstance(source, str) and "pi-claude-directsdk" in source
-        settings["packages"] = [resource for resource in settings.get("packages", []) if not is_directsdk(resource)]
-        settings["extensions"] = [resource for resource in settings.get("extensions", []) if not is_directsdk(resource)]
+            return isinstance(source, str) and "pi-claude-native" in source
+        settings["packages"] = [resource for resource in settings.get("packages", []) if not is_this_extension(resource)]
+        settings["extensions"] = [resource for resource in settings.get("extensions", []) if not is_this_extension(resource)]
         settings["extensions"].append(str(extension))
         settings_path.write_text(json.dumps(settings, indent=2) + "\n")
         os.chmod(settings_path, 0o600)
@@ -98,7 +98,7 @@ def run(args):
             return
         command = [executable]
         if args.scenario == "startup":
-            command += ["--offline", "--list-models", "claude-directsdk"]
+            command += ["--offline", "--list-models", "claude-native"]
         else:
             sessions = directory / "sessions"
             sessions.mkdir()
@@ -119,7 +119,7 @@ def run(args):
             command += ["--", "For this verification only, reply with a short greeting. Do not call tools."]
 
         # Use the real working folder, copied settings/credentials, and tools.
-        # Only the DirectSDK extension source changes; no provider is fabricated.
+        # Only this extension's source changes; no provider is fabricated.
         started = time.monotonic()
         process = subprocess.Popen(command, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
                                    stderr=subprocess.PIPE, env=env, start_new_session=True)

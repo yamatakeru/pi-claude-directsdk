@@ -1,14 +1,14 @@
 name: Help and setup
-description: Ask a question or get help installing, configuring, or using DirectSDK.
+description: Ask a question or get help installing, configuring, or using Claude Native.
 title: "[Help]: "
 labels: [question, needs-triage]
 body:
   - type: markdown
     attributes:
       value: |
-        Search [existing issues](https://github.com/joaomj/pi-claude-directsdk/issues) and check the [troubleshooting guide](https://github.com/joaomj/pi-claude-directsdk/blob/main/docs/troubleshooting.md) first.
+        Search [existing issues](https://github.com/yamatakeru/pi-claude-native/issues) and check the [troubleshooting guide](https://github.com/yamatakeru/pi-claude-native/blob/main/docs/troubleshooting.md) first.
         Do not share credentials, tokens, private prompts, or unredacted conversation traces.
-        Report security vulnerabilities through [private reporting](https://github.com/joaomj/pi-claude-directsdk/security/advisories/new), not here.
+        Report security vulnerabilities through [private reporting](https://github.com/yamatakeru/pi-claude-native/security/advisories/new), not here.
   - type: textarea
     id: question
     attributes:
@@ -47,7 +47,7 @@ body:
   - type: input
     id: extension-version
     attributes:
-      label: DirectSDK version or commit
+      label: Claude Native version or commit
       description: Include the installed version or Git commit, if known. Use pi list to identify your installation source.
   - type: input
     id: pi-version

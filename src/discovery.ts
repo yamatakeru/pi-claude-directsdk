@@ -36,7 +36,7 @@ export async function discoverModels(signal: AbortSignal): Promise<DiscoveredMod
   let child: ChildHandle | undefined;
   let primaryError: unknown;
   try {
-    cwd = await mkdtemp(join(tmpdir(), "pi-directsdk-picker-"));
+    cwd = await mkdtemp(join(tmpdir(), "pi-claude-native-picker-"));
     const address = guard.address();
     if (!address || typeof address === "string") throw new Error("Discovery guard has no address");
     const [command = "", ...prefix] = resolved;

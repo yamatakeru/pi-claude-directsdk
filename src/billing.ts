@@ -8,10 +8,10 @@
  */
 
 import type { AssistantMessageDiagnostic, JsonObject } from "@earendil-works/pi-ai/compat";
-import { DirectSdkError } from "./errors.js";
+import { ClaudeNativeError } from "./errors.js";
 
-export const ALLOW_USAGE_CREDITS_ENV = "CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS";
-export const RATE_LIMIT_DIAGNOSTIC = "pi-claude-directsdk/rate-limit";
+export const ALLOW_USAGE_CREDITS_ENV = "PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS";
+export const RATE_LIMIT_DIAGNOSTIC = "pi-claude-native/rate-limit";
 
 /** The subset of native `rate_limit_info` this transport reads and reports. */
 export interface RateLimitInfo {
@@ -40,13 +40,13 @@ export function usageCreditsAllowed(env: NodeJS.ProcessEnv): boolean {
 const USAGE_CREDITS_REJECTION =
   /third-party apps now draw from your extra usage|out of extra usage|draws? from your usage credits/iu;
 
-export function usageCreditsChargeError(info: RateLimitInfo): DirectSdkError {
+export function usageCreditsChargeError(info: RateLimitInfo): ClaudeNativeError {
   const status = info.status ?? "unknown";
   const type = info.rateLimitType ? `, ${info.rateLimitType}` : "";
   const reset = typeof info.resetsAt === "number"
     ? ` Resets at ${new Date(info.resetsAt * 1000).toISOString()}.`
     : "";
-  return new DirectSdkError(
+  return new ClaudeNativeError(
     "billing",
     "Claude Code billing: this request was charged to Claude usage credits instead of your plan limits " +
       `(rate limit status ${status}${type}).${reset} Pi stopped so further requests are not charged. ` +
@@ -56,11 +56,11 @@ export function usageCreditsChargeError(info: RateLimitInfo): DirectSdkError {
 }
 
 /** Rewrite an Anthropic usage-credit rejection into the same actionable error. */
-export function usageCreditsRejectionError(message: string): DirectSdkError | undefined {
+export function usageCreditsRejectionError(message: string): ClaudeNativeError | undefined {
   if (!USAGE_CREDITS_REJECTION.test(message)) {
     return undefined;
   }
-  return new DirectSdkError(
+  return new ClaudeNativeError(
     "billing",
     "Claude Code billing: Anthropic did not accept this request on your Claude plan limits and wants to charge " +
       "it to usage credits. This happens when your plan limit is used up, or when Anthropic classifies the " +

@@ -3,7 +3,7 @@ import { performance } from "node:perf_hooks";
 import type { JsonObject } from "@earendil-works/pi-ai/compat";
 import type { NativeUsage } from "./types.js";
 
-export const PREFIX_HASH_ENV = "PI_DIRECTSDK_PROMPT_HASHES";
+export const PREFIX_HASH_ENV = "PI_CLAUDE_NATIVE_PROMPT_HASHES";
 
 export type TimingMilestone =
   | "historyPrepared"
