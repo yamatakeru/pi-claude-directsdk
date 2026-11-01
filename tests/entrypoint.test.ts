@@ -18,6 +18,11 @@ test("the child reports this client, replacing an inherited label", () => {
   );
 });
 
+test("the child runs with native artifacts off, replacing an inherited value", () => {
+  assert.equal(build({})["CLAUDE_CODE_DISABLE_ARTIFACT"], "1");
+  assert.equal(build({ CLAUDE_CODE_DISABLE_ARTIFACT: "0" })["CLAUDE_CODE_DISABLE_ARTIFACT"], "1");
+});
+
 test("the override sets the label, and an empty override leaves the label to the CLI", () => {
   assert.equal(
     build({ [ENTRYPOINT_ENV]: "my-tool" })["CLAUDE_CODE_ENTRYPOINT"],
