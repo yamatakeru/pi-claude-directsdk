@@ -36,6 +36,8 @@ GATE_TOKENS=(
   CLAUDE_CODE_TOTAL_TOKENS_REMINDER
   isUsingOverage
   unifiedWindows
+  CLAUDE_CODE_RUSTLING_PIXEL
+  tengu_rustling_pixel
 )
 
 # Broad surfaces. Reported only when the same issue also discusses metering.

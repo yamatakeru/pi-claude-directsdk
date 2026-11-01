@@ -37,6 +37,7 @@ test("restores signed thinking only while the visible projection matches", () =>
   const message = assistant();
   const native = {
     role: "assistant" as const,
+    model: "claude-opus-5-5",
     content: [
       { type: "thinking" as const, thinking: "private", signature: "signed" },
       { type: "text" as const, text: "visible" },
@@ -52,6 +53,7 @@ test("restores signed thinking only while the visible projection matches", () =>
   ];
   const restored = prepareHistory(history, new Set(["read"]));
   assert.deepEqual(restored.frames[1]?.message.content[0], native.content[0]);
+  assert.equal(restored.frames[1]?.message.model, "claude-opus-5-5");
 
   message.content[1] = { type: "text", text: "edited" };
   const edited = prepareHistory(history, new Set(["read"]));

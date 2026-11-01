@@ -64,6 +64,7 @@ export interface NativeFrame {
   type: "user" | "assistant";
   message: {
     role: "user" | "assistant";
+    model?: string;
     content: NativeContentBlock[];
   };
   shouldQuery?: boolean;

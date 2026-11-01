@@ -30,7 +30,9 @@ Maintainer pull requests remain available for branch review and CI.
 `Upstream Claude Code watch` issue. It looks for two kinds of report:
 
 - A literal identifier this transport writes or reads: the billing identity label, the
-  `CLAUDE_CODE_*` variables the child receives, `isUsingOverage`, or `unifiedWindows`.
+  `CLAUDE_CODE_*` variables the child receives, `isUsingOverage`, `unifiedWindows`, or the
+  setting that decides whether replayed thinking is sent (`CLAUDE_CODE_RUSTLING_PIXEL`,
+  `tengu_rustling_pixel`).
 - A report about the SDK, `claude -p`, or headless use that also discusses metering. Reports
   about the desktop app, VS Code, Cowork, and other clients stay out of this group.
 
