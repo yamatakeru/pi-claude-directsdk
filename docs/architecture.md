@@ -73,8 +73,9 @@ Before forwarding, the relay's payload hook (`src/native-rewrite.ts`) parses the
 - Opening request: that text is moved after the frame instead, so the opening turn is cached once.
 - The trailing date line returns to the end of the environment message, where the opening request had it.
 - Message breakpoints after the replay-stable span move onto its last cacheable block.
+- After a tool loop longer than the cache lookback (20 blocks), the block before the open turn's first thinking keeps a marker of its own. Once a later user message carries more than tool results, the API stops matching cache entries written after that thinking, so without this marker the next turn would read only system and tools. The marker is added only within the four-breakpoint limit; at the limit a CLI marker between it and the recurring breakpoint moves there instead.
 
-Pi content, assistant blocks (including signed thinking), system blocks, and tools are never edited. Markers only move earlier and are never added. A request that does not match exactly is forwarded as the CLI built it; this step never fails a call. The `nativeContext` field of the meta diagnostic lists the applied steps and skip reasons, never content. These are CLI-version-sensitive behaviours; see [transport-measurements.md](transport-measurements.md#replay-stable-native-context).
+Pi content, assistant blocks (including signed thinking), system blocks, and tools are never edited. Markers only move earlier, except the turn-start marker above, which adds at most one. A request that does not match exactly is forwarded as the CLI built it; this step never fails a call. The `nativeContext` field of the meta diagnostic lists the applied steps and skip reasons, never content. These are CLI-version-sensitive behaviours; see [transport-measurements.md](transport-measurements.md#replay-stable-native-context).
 
 The relay reconstructs the upstream assistant message from the SSE stream (`SseCapture`) and records status, request id, the first relay failure, and an error body (capped at 64 KiB).
 

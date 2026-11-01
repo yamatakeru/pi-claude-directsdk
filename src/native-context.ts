@@ -19,7 +19,8 @@ export type NativeContextStep =
   | "dateLineRestored"
   | "reminderDropped"
   | "openingReordered"
-  | "breakpointPinned";
+  | "breakpointPinned"
+  | "turnStartMarked";
 
 export type NativeContextSkip =
   | "body is not a Messages request"
@@ -34,6 +35,10 @@ export interface NativeContextReport {
 }
 
 const UNCACHEABLE = new Set(["thinking", "redacted_thinking"]);
+// Anthropic's cache lookup checks at most this many positions back from a
+// breakpoint, itself included, and allows this many breakpoints per request.
+const LOOKBACK = 20;
+const MAX_BREAKPOINTS = 4;
 // The only CLI text matched by wording; anything looser could move varying text.
 const DATE_LINE = /^Today's date is \d{4}-\d{2}-\d{2}\.$/;
 
@@ -65,6 +70,26 @@ function lastAssistant(messages: Message[]): number {
     if (messages[i]?.role === "assistant") return i;
   }
   return -1;
+}
+
+interface Position {
+  i: number;
+  j: number;
+  block: Block;
+}
+
+function blockPositions(messages: Message[]): Position[] {
+  const positions: Position[] = [];
+  messages.forEach((message, i) => {
+    if (Array.isArray(message.content)) {
+      message.content.forEach((block, j) => positions.push({ i, j, block: block as Block }));
+    }
+  });
+  return positions;
+}
+
+function before(a: Position, b: Position): boolean {
+  return a.i < b.i || (a.i === b.i && a.j < b.j);
 }
 
 function frameStarts(blocks: unknown[], frame: Block[]): number[] {
@@ -320,15 +345,13 @@ function frameFirst(messages: Message[], queried: Block[]): boolean {
  * replays. Before a changed tool result the span ends at the assistant
  * message: Hermes measured no hit on the unchanged results before it.
  */
-function pinBreakpoint(messages: Message[], queried: Block[]): boolean {
-  const positions: Array<{ i: number; j: number; block: Block }> = [];
-  messages.forEach((message, i) => {
-    if (Array.isArray(message.content)) {
-      message.content.forEach((block, j) => positions.push({ i, j, block: block as Block }));
-    }
-  });
+function pinBreakpoint(
+  messages: Message[],
+  queried: Block[],
+): { target?: Position; pinned: boolean } {
+  const positions = blockPositions(messages);
   const marked = positions.filter((p) => "cache_control" in p.block);
-  if (marked.length === 0) return false;
+  if (marked.length === 0) return { pinned: false };
   const last = lastAssistant(messages);
   const stable = positions.filter((p) => p.i <= last);
   const newest = messages[last + 1];
@@ -342,13 +365,83 @@ function pinBreakpoint(messages: Message[], queried: Block[]): boolean {
     if (blockType(rest) !== "tool_result") stable.push(...prefix);
   }
   const target = [...stable].reverse().find((p) => !UNCACHEABLE.has(p.block["type"] as string));
-  if (!target) return false;
-  const after = marked.filter((p) => p.i > target.i || (p.i === target.i && p.j > target.j));
-  if (after.length === 0) return false;
+  if (!target) return { pinned: false };
+  const after = marked.filter((p) => before(target, p));
+  if (after.length === 0) return { target, pinned: false };
   // The earliest later marker moves to the target; the others are removed.
   const moved = after[0]!.block["cache_control"];
   for (const p of after) delete p.block["cache_control"];
   if (!("cache_control" in target.block)) target.block["cache_control"] = moved;
+  return { target, pinned: true };
+}
+
+/** Every breakpoint the API counts, nested and top-level ones included. */
+function breakpoints(value: unknown): number {
+  if (Array.isArray(value)) return value.reduce((sum: number, v) => sum + breakpoints(v), 0);
+  if (!isRecord(value)) return 0;
+  return Object.entries(value).reduce(
+    (sum, [key, v]) => sum + (key === "cache_control" ? 1 : breakpoints(v)),
+    0,
+  );
+}
+
+/** A user message with more than tool results: a new turn, or text sent during a tool loop. */
+function opensTurn(message: Message): boolean {
+  const content = message.content;
+  return (
+    message.role === "user" &&
+    (typeof content === "string" ||
+      (Array.isArray(content) && content.some((b) => blockType(b) !== "tool_result")))
+  );
+}
+
+/**
+ * Keep the open turn's start readable for the next turn. Once a user message
+ * carries more than tool results, Anthropic stops matching cache entries
+ * written after the open turn's first thinking block; the next turn reads only
+ * the newest entry before it. After a tool loop longer than the lookback, the
+ * recurring breakpoint cannot reach that entry and the read falls back to
+ * system and tools, so the block before that thinking keeps a mark of its own.
+ * Positions are counted per block without the API's merging of tool_use and
+ * tool_result runs, so an error only marks early. The mark copies the next
+ * mark's TTL, keeping the CLI's TTL order.
+ */
+function keepTurnMark(body: Record<string, unknown>, messages: Message[], target: Position): boolean {
+  const last = lastAssistant(messages);
+  let opening = -1;
+  for (let i = 0; i < last; i++) if (opensTurn(messages[i]!)) opening = i;
+  if (opening < 0) return false;
+  const thinks = (m: Message) =>
+    m.role === "assistant" &&
+    Array.isArray(m.content) &&
+    m.content.some((b) => UNCACHEABLE.has(blockType(b) as string));
+  const thought = messages.findIndex((m, i) => i > opening && i <= last && thinks(m));
+  if (thought < 0) return false;
+  let frame = thought - 1;
+  while (frame > opening && messages[frame]!.role !== "user") frame--;
+  const content = messages[frame]!.content;
+  if (!Array.isArray(content)) return false;
+  let j = content.length - 1;
+  while (j >= 0 && UNCACHEABLE.has(blockType(content[j]) as string)) j--;
+  if (j < 0) return false;
+  const block = content[j] as Block;
+  const mark: Position = { i: frame, j, block };
+  if ("cache_control" in block || !before(mark, target)) return false;
+  const span = messages
+    .slice(frame, target.i)
+    .reduce((sum, m) => sum + (Array.isArray(m.content) ? m.content.length : 1), 0);
+  // The recurring breakpoint's own lookback still reaches it.
+  if (span - j + target.j + 1 <= LOOKBACK) return false;
+  const later = blockPositions(messages).filter((p) => "cache_control" in p.block && before(mark, p));
+  if (later.length === 0) return false;
+  if (breakpoints(body) < MAX_BREAKPOINTS) {
+    block["cache_control"] = deepClone(later[0]!.block["cache_control"]);
+    return true;
+  }
+  const spare = later.find((p) => before(p, target));
+  if (!spare || !("cache_control" in target.block)) return false;
+  block["cache_control"] = spare.block["cache_control"];
+  delete spare.block["cache_control"];
   return true;
 }
 
@@ -381,6 +474,8 @@ export function stabilizeNativeRequest(
     (m) => Array.isArray(m.content) && m.content.some((b) => isRecord(b) && "cache_control" in b),
   );
   if (hasMarks && frameFirst(messages, frame)) report.applied.push("openingReordered");
-  if (pinBreakpoint(messages, frame)) report.applied.push("breakpointPinned");
+  const { target, pinned } = pinBreakpoint(messages, frame);
+  if (pinned) report.applied.push("breakpointPinned");
+  if (target && keepTurnMark(body, messages, target)) report.applied.push("turnStartMarked");
   return report;
 }
