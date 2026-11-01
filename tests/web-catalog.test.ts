@@ -70,7 +70,14 @@ test("an unavailable mid-conversation page withholds tool changes but keeps the 
 });
 
 test("a stalled mid-conversation page times out on its own and keeps the catalog", async (t) => {
+  // AbortSignal.timeout does not keep the event loop alive; a stalled fetch would.
   const warning = await catalogWithout(t, (signal) =>
-    new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason))));
+    new Promise((_, reject) => {
+      const pending = setInterval(() => {}, 1_000);
+      signal.addEventListener("abort", () => {
+        clearInterval(pending);
+        reject(signal.reason);
+      });
+    }));
   assert.match(warning, /^mid-conversation tool changes: Cannot load model metadata from .*: The operation was aborted due to timeout$/);
 });
