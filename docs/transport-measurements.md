@@ -125,7 +125,7 @@ Three options were considered for the reminder:
 Limits:
 
 - Routes without a mid-conversation environment message, such as Haiku 4.5, still miss once on call 2: the CLI changes its opening-turn text between the first and second request.
-- After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour; the Hermes reference mitigates it with an extra turn-start marker. It is not part of this change.
+- After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour. The relay now ports the Hermes turn-start marker ([hermes-official-plugins#36](https://github.com/NousResearch/hermes-official-plugins/issues/36), `_keep_turn_mark`), where the next turn's read rose from 54% to 94% in Hermes' live run. A loopback capture with Claude Code 2.1.316 after a 14-round thinking loop showed the marker on the opening frame within four breakpoints; this transport has no paid measurement of it yet. Until replayed thinking reached the request (see below), this miss did not apply here.
 - A later CLI that changes these placements disables the affected step and shows up in `nativeContext`, not as a failed call.
 
 ### Artifact scratchpad line under the custom label
