@@ -12,10 +12,6 @@ Remove `needs-triage` after reviewing an issue. Use `needs-info` only when speci
 Remove `needs-info` and `awaiting-response` when the requested information arrives. Use `confirmed` for verified problems.
 Link duplicates to the existing issue before closing them.
 
-New issues and pull requests are assigned to the maintainer by
-`.github/workflows/auto-assign.yml`. Assignment is therefore a notification, not a claim of
-ownership; the labels carry triage state.
-
 The daily cleanup workflow only handles `needs-info` issues. It reminds after 30 inactive days and closes after another 14.
 Confirmed issues and milestone issues are exempt. The workflow does not clean up pull requests.
 
@@ -56,7 +52,7 @@ Push work to a branch. CI checks types and compilation on branch pushes and pull
 These checks do not exercise the installed Pi runtime or make paid model requests.
 Use the [verification guidance](testing.md) for local runtime checks.
 
-Merge the branch into `main` with a squash merge once CI passes. Installations that follow `main` pick the change up with `pi update`; there is no npm release.
+Merge the branch into `main` with a squash merge once CI passes. Installations that follow `main` pick the change up with `pi update git:github.com/yamatakeru/pi-claude-native`; there is no npm release.
 
 ## Security and dependencies
 
