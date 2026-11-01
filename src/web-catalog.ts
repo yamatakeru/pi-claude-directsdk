@@ -166,17 +166,16 @@ function toolChangeModels(page: string): Set<string> {
 }
 
 export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSignal): Promise<CatalogResult> {
-  const [overview, prices, efforts, midConversation] = await Promise.all([
-    document(OVERVIEW, signal), document(PRICING, signal), document(EFFORT, signal),
-    document(MID_CONVERSATION, signal),
-  ]);
   const warnings: string[] = [];
-  let toolChanges: Set<string> = new Set();
-  try {
-    toolChanges = toolChangeModels(midConversation);
-  } catch (error) {
-    warnings.push(`mid-conversation tool changes: ${error instanceof Error ? error.message : error}`);
-  }
+  // Tool changes are optional: an unavailable or changed page only withholds them.
+  const [overview, prices, efforts, toolChanges] = await Promise.all([
+    document(OVERVIEW, signal), document(PRICING, signal), document(EFFORT, signal),
+    document(MID_CONVERSATION, signal).then(toolChangeModels).catch((error: unknown) => {
+      signal.throwIfAborted();
+      warnings.push(`mid-conversation tool changes: ${error instanceof Error ? error.message : error}`);
+      return new Set<string>();
+    }),
+  ]);
   const promptCache = cacheLifetimes(prices);
   const overviewTables = tables(overview);
   const current = overviewTables.find(table => table[0]?.[0] === "Feature")?.find(row => row[0] === "Claude API ID")?.slice(1);
