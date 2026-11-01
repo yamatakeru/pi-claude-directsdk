@@ -70,12 +70,13 @@ test("an unavailable mid-conversation page withholds tool changes but keeps the 
 });
 
 test("a stalled mid-conversation page times out on its own and keeps the catalog", async (t) => {
-  // AbortSignal.timeout does not keep the event loop alive; a stalled fetch would.
+  // AbortSignal.timeout does not keep the event loop alive; a stalled fetch
+  // would. The guard holds it open and ends the stall if the deadline is lost.
   const warning = await catalogWithout(t, (signal) =>
     new Promise((_, reject) => {
-      const pending = setInterval(() => {}, 1_000);
+      const guard = setTimeout(() => reject(new Error("page deadline never fired")), 10_000);
       signal.addEventListener("abort", () => {
-        clearInterval(pending);
+        clearTimeout(guard);
         reject(signal.reason);
       });
     }));
