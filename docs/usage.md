@@ -67,7 +67,9 @@ or Claude Code update. If Anthropic classifies these requests as third-party tra
 ## Cost reporting
 
 Pi's per-model costs are estimates from [Anthropic pricing](https://platform.claude.com/docs/en/about-claude/pricing),
-not subscription charges. Failed or interrupted requests are never reported as free.
+not subscription charges. A failed or interrupted request keeps the usage captured before it
+stopped. A request that fails before any usage is captured is reported at zero cost, which
+does not mean it was free.
 
 ## Usage-credit guard
 
