@@ -167,10 +167,12 @@ function toolChangeModels(page: string): Set<string> {
 
 export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSignal): Promise<CatalogResult> {
   const warnings: string[] = [];
-  // Tool changes are optional: an unavailable or changed page only withholds them.
+  // Tool changes are optional: an unavailable, slow or changed page only
+  // withholds them. Its own deadline leaves the refresh deadline to the rest.
+  const optional = AbortSignal.any([signal, AbortSignal.timeout(5_000)]);
   const [overview, prices, efforts, toolChanges] = await Promise.all([
     document(OVERVIEW, signal), document(PRICING, signal), document(EFFORT, signal),
-    document(MID_CONVERSATION, signal).then(toolChangeModels).catch((error: unknown) => {
+    document(MID_CONVERSATION, optional).then(toolChangeModels).catch((error: unknown) => {
       signal.throwIfAborted();
       warnings.push(`mid-conversation tool changes: ${error instanceof Error ? error.message : error}`);
       return new Set<string>();

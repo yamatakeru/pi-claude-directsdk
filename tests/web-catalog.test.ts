@@ -49,14 +49,28 @@ const PAGES: Record<string, string> = {
   ].join("\n"),
 };
 
-test("an unavailable mid-conversation page withholds tool changes but keeps the catalog", async (t) => {
-  t.mock.method(globalThis, "fetch", async (url: string) => {
+async function catalogWithout(
+  t: test.TestContext,
+  missing: (signal: AbortSignal) => Promise<Response>,
+) {
+  t.mock.method(globalThis, "fetch", async (url: string, init?: RequestInit) => {
     const page = PAGES[url];
-    return page === undefined ? new Response("", { status: 503 }) : new Response(page);
+    return page === undefined ? missing(init!.signal!) : new Response(page);
   });
   const result = await loadWebCatalog([], new AbortController().signal);
   assert.deepEqual(result.models.map((model) => model.id), ["claude-haiku-5-5"]);
   assert.equal(result.models[0]?.compat, undefined);
   assert.equal(result.warnings.length, 1);
-  assert.match(result.warnings[0]!, /^mid-conversation tool changes: Cannot load model metadata from .*: HTTP 503$/);
+  return result.warnings[0]!;
+}
+
+test("an unavailable mid-conversation page withholds tool changes but keeps the catalog", async (t) => {
+  const warning = await catalogWithout(t, async () => new Response("", { status: 503 }));
+  assert.match(warning, /^mid-conversation tool changes: Cannot load model metadata from .*: HTTP 503$/);
+});
+
+test("a stalled mid-conversation page times out on its own and keeps the catalog", async (t) => {
+  const warning = await catalogWithout(t, (signal) =>
+    new Promise((_, reject) => signal.addEventListener("abort", () => reject(signal.reason))));
+  assert.match(warning, /^mid-conversation tool changes: Cannot load model metadata from .*: The operation was aborted due to timeout$/);
 });
