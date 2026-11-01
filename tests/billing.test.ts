@@ -102,6 +102,9 @@ test("usage credits are opt-in and rejections are actionable non-retryable billi
   assert.equal(usageCreditsAllowed({}), false);
   assert.equal(usageCreditsAllowed({ [ALLOW_USAGE_CREDITS_ENV]: "0" }), false);
   assert.equal(usageCreditsAllowed({ [ALLOW_USAGE_CREDITS_ENV]: "1" }), true);
+  for (const value of ["typo", "disabled", "0 ", "true"]) {
+    assert.equal(usageCreditsAllowed({ [ALLOW_USAGE_CREDITS_ENV]: value }), false, value);
+  }
 
   const rejection = usageCreditsRejectionError(
     "API Error: 400 Third-party apps now draw from your extra usage, not your plan limits.",

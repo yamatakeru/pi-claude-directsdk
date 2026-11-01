@@ -24,12 +24,9 @@ export interface RateLimitInfo {
   [key: string]: unknown;
 }
 
-function isTruthy(value: string | undefined): boolean {
-  return value !== undefined && !["", "0", "false", "no", "off"].includes(value.toLowerCase());
-}
-
+/** Only the documented value allows charges; anything else keeps the guard on. */
 export function usageCreditsAllowed(env: NodeJS.ProcessEnv): boolean {
-  return isTruthy(env[ALLOW_USAGE_CREDITS_ENV]);
+  return env[ALLOW_USAGE_CREDITS_ENV] === "1";
 }
 
 /**

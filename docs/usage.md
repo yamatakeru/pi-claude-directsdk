@@ -28,7 +28,7 @@ The request transport still loads on the first Claude request. See [docs/startup
 | `PI_CLAUDE_NATIVE_COMMAND` | Override the `claude` executable path. |
 | `PI_CLAUDE_NATIVE_CONFIG_DIR` | Point at a logged-in CLI config directory. |
 | `CLAUDE_CODE_OAUTH_TOKEN` | Supply a token from `claude setup-token` in the environment Pi runs in. |
-| `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS` | Set to `1` to allow turns that Claude Code reports as charged to usage credits. Unset or `0` stops later turns after an overage charge. |
+| `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS` | Set to `1` to allow turns that Claude Code reports as charged to usage credits. Any other value, or none, stops later turns after an overage charge. |
 | `PI_CLAUDE_NATIVE_ENTRYPOINT` | Client label sent with each request. Defaults to `pi-claude-native`. Set it to keep another label, or to an empty string to let Claude Code label the session. |
 | `PI_CLAUDE_NATIVE_PROMPT_HASHES` | Set to `1` to add SHA-256 hashes of the provider-supplied system prompt and tool definitions to message diagnostics. Unset it or set it to `0` to disable hashes. |
 
