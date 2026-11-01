@@ -1,6 +1,6 @@
 # Contributing
 
-Bug reports, questions, and feature requests are welcome through [issues](https://github.com/joaomj/pi-claude-directsdk/issues/new/choose).
+Bug reports, questions, and feature requests are welcome through [issues](https://github.com/yamatakeru/pi-claude-native/issues/new/choose).
 This project does not accept unsolicited public pull requests. The repository owner maintains the implementation.
 
 ## Before opening an issue
@@ -14,13 +14,12 @@ Do not share credentials, authentication files, tokens, private prompts, or unre
 Share only the relevant error excerpt after removing sensitive information.
 Do not run paid verification scenarios just to file an issue.
 
-Report suspected vulnerabilities through [private security reporting](https://github.com/joaomj/pi-claude-directsdk/security/advisories/new).
+Report suspected vulnerabilities through [private security reporting](https://github.com/yamatakeru/pi-claude-native/security/advisories/new).
 See [SECURITY.md](SECURITY.md) for scope and reporting guidance.
 
 ## Issue handling
 
-New issues receive a type label, `needs-triage`, and an assignment to the maintainer.
-The label, not the assignment, shows triage state.
+New issues receive a type label and `needs-triage`.
 The maintainer uses `needs-info` when a report needs more information and `confirmed` for a verified problem.
 
 Only issues labeled `needs-info` are eligible for inactivity cleanup.

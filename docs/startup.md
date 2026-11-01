@@ -1,18 +1,18 @@
 # Startup
 
-DirectSDK registers synchronously with an empty catalog. The extension factory starts no processes, sockets, timers, or web requests. The streaming API is registered independently of the catalog, so an empty catalog does not disable dispatch. The request transport remains lazy.
+Claude Native registers synchronously with an empty catalog. The extension factory starts no processes, sockets, timers, or web requests. The streaming API is registered independently of the catalog, so an empty catalog does not disable dispatch. The request transport remains lazy.
 
 ## Catalog initialization
 
 - Cache-only refresh restores a previously verified snapshot from Pi’s model store. It runs no CLI probes or web requests.
-- Restored entries are labeled `last verified snapshot`. A fresh offline install has no DirectSDK models.
-- Interactive Pi starts live refresh after the editor is ready. DirectSDK uses this lifecycle, not an extension startup hook.
+- Restored entries are labeled `last verified snapshot`. A fresh offline install has no Claude Native models.
+- Interactive Pi starts live refresh after the editor is ready. Claude Native uses this lifecycle, not an extension startup hook.
 - Live refresh loads discovery modules asynchronously. It uses a supervised child for the Claude Code picker and asynchronous requests for public Anthropic documentation.
 - Refresh has a 12-second deadline and honors Pi’s abort signal. Documents have a 2 MiB limit. At most four model pages load concurrently.
 - Successful refresh persists verified metadata. Repeated refreshes reuse it for 15 minutes unless forced.
 - Missing metadata excludes the affected model with a warning. A refresh failure reports the error and deletes the snapshot. There is no pinned fallback.
 
-On a fresh installation, start interactive Pi, open `/model`, and wait for DirectSDK catalog refresh. Only then select a DirectSDK model from the command line. In Pi 1.3.0, `pi update --models` refreshes catalogs without loading this extension and does not initialize DirectSDK. A saved snapshot supports later offline and non-interactive invocations.
+On a fresh installation, start interactive Pi, open `/model`, and wait for Claude Native catalog refresh. Only then select a Claude Native model from the command line. In Pi 1.3.0, `pi update --models` refreshes catalogs without loading this extension and does not initialize Claude Native. A saved snapshot supports later offline and non-interactive invocations.
 
 ## Lazy loading
 

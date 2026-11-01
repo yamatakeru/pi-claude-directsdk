@@ -20,9 +20,9 @@ flowchart TD
 
 ## Components
 
-### Provider entry (`src/provider.ts`, `extensions/claude-directsdk/index.ts`)
+### Provider entry (`src/provider.ts`, `extensions/claude-native/index.ts`)
 
-The extension registers a complete Pi provider with id `claude-directsdk` and an initially empty catalog. Cache-only refresh restores verified snapshots from Pi’s model store without CLI probes or network work. Live refresh runs after editor startup and reports failures instead of returning pinned models.
+The extension registers a complete Pi provider with id `claude-native` and an initially empty catalog. Cache-only refresh restores verified snapshots from Pi’s model store without CLI probes or network work. Live refresh runs after editor startup and reports failures instead of returning pinned models.
 
 `streamSimple` uses `src/lazy-stream.ts` to return a stream immediately. The wrapper loads `src/stream.ts` asynchronously and preserves the model, transcript, and request options. See [startup.md](startup.md).
 
@@ -38,7 +38,7 @@ Rules:
 - Tool-call IDs that Claude cannot accept are mapped to valid native IDs. Tool results use the same mapping. Stored Pi IDs remain unchanged.
 - Thinking without a matching native carrier is replayed as ordinary assistant text. This allows switching providers during a session.
 - Other unsupported history is rejected with a `replay` error, never flattened into prose.
-- Signed native thinking survives only inside a durable carrier (`pi-claude-directsdk/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly.
+- Signed native thinking survives only inside a durable carrier (`pi-claude-native/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly.
 - Models with verified mid-conversation tool-change support keep later system messages. The initial system message supplies the system prompt and initial tools. Later tool additions and removals are injected as native system content at their assistant boundaries, and historical calls to any tool declared earlier in the transcript remain replayable. Response validation still uses the current Pi inventory.
 
 ### Request assembly (`src/request.ts`)
@@ -78,11 +78,11 @@ Pi content, assistant blocks (including signed thinking), system blocks, and too
 
 The relay reconstructs the upstream assistant message from the SSE stream (`SseCapture`) and records status, request id, the first relay failure, and an error body (capped at 64 KiB).
 
-The failure record (`relayFailure` in the `pi-claude-directsdk/meta` diagnostic, also summarized in the error text) holds the error name, the Node `code`, `syscall`, address, and port. For an `AggregateError`, such as a failed connection to every resolved address, it also holds each inner error's code and address (at most eight). It also records the phase: `request-body`, `connect` (no request bytes reached upstream), `request`, or `response`. It never contains request or response content. Messages are kept only for the relay's own fixed errors. Upstream targets must be HTTPS, except loopback HTTP endpoints. Request bodies are capped at 512 MiB.
+The failure record (`relayFailure` in the `pi-claude-native/meta` diagnostic, also summarized in the error text) holds the error name, the Node `code`, `syscall`, address, and port. For an `AggregateError`, such as a failed connection to every resolved address, it also holds each inner error's code and address (at most eight). It also records the phase: `request-body`, `connect` (no request bytes reached upstream), `request`, or `response`. It never contains request or response content. Messages are kept only for the relay's own fixed errors. Upstream targets must be HTTPS, except loopback HTTP endpoints. Request bodies are capped at 512 MiB.
 
 ### Tool-change injection boundaries
 
-The relay inserts upstream's mid-conversation system messages (`src/transcript.ts`) after the native-context steps, in the same hook. Insertion points count the assistant frames the CLI sends. A carried assistant frame that holds only empty text is not counted, because the CLI drops it. The plan also records the expected number of assistant frames; a request with a different number throws, and the relay answers 500 before contacting upstream rather than inserting at a shifted boundary.
+The relay inserts the mid-conversation system messages (`src/transcript.ts`) after the native-context steps, in the same hook. Insertion points count the assistant frames the CLI sends. A carried assistant frame that holds only empty text is not counted, because the CLI drops it. The plan also records the expected number of assistant frames; a request with a different number throws, and the relay answers 500 before contacting upstream rather than inserting at a shifted boundary.
 
 ### Child supervision (`src/process.ts`)
 
@@ -94,9 +94,9 @@ The caller receives the child final exit status after its output streams close. 
 
 Native model-request children share an empty, persistent directory. Its path remains stable across Pi processes, avoiding a changing native working-directory prefix after restart. Request files, credentials, and transcripts are not stored there.
 
-- Linux: `${XDG_CACHE_HOME:-~/.cache}/pi-claude-directsdk/child`.
-- macOS: `~/Library/Caches/pi-claude-directsdk/child`.
-- Windows: `%LOCALAPPDATA%/pi-claude-directsdk/child`, with the user's local app-data directory as the fallback.
+- Linux: `${XDG_CACHE_HOME:-~/.cache}/pi-claude-native/child`.
+- macOS: `~/Library/Caches/pi-claude-native/child`.
+- Windows: `%LOCALAPPDATA%/pi-claude-native/child`, with the user's local app-data directory as the fallback.
 
 On POSIX, the provider verifies that its cache root and child directory belong to the current effective user and have mode `0700`. It rejects symlinks and nonempty child directories instead of reading unexpected project instructions or deleting files. Windows uses the access controls inherited from the user's cache parent. Relative cache-directory settings fail with the setting name and a remedy.
 
@@ -106,7 +106,7 @@ The first request after this directory change can miss a previously cached nativ
 
 The provider converts child stdout `stream-json` to Pi events. Native result errors are preserved even when stderr is empty. Prompt-length errors report the selected route and configured context window. Native tool calls are published only after the first upstream response is complete and the child has exited. Usage and stop reason come from the authoritative native usage. Incomplete native or upstream responses produce `incomplete` or `upstream` errors.
 
-The provider reads `rate_limit_event.rate_limit_info`. If the authoritative response reports usage-credit overage and `CLAUDE_DIRECTSDK_ALLOW_USAGE_CREDITS` is not enabled, the turn fails with a non-retryable `billing` error after usage is captured. Completed and failed turns carry a `pi-claude-directsdk/rate-limit` diagnostic. Upstream usage-credit rejection text maps to the same error.
+The provider reads `rate_limit_event.rate_limit_info`. If the authoritative response reports usage-credit overage and `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS` is not enabled, the turn fails with a non-retryable `billing` error after usage is captured. Completed and failed turns carry a `pi-claude-native/rate-limit` diagnostic. Upstream usage-credit rejection text maps to the same error.
 
 ### Inert MCP (`src/inert-mcp.ts`)
 

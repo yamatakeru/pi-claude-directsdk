@@ -1,10 +1,10 @@
 # Comparison with pi-claude-bridge
 
-[pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) is the closest alternative: both expose Claude as a Pi provider and let Pi execute provider tools. DirectSDK prioritizes request isolation and Pi-owned state. Bridge uses the official Agent SDK and adds optional delegation to Claude agents.
+[pi-claude-bridge](https://github.com/elidickinson/pi-claude-bridge) is the closest alternative: both expose Claude as a Pi provider and let Pi execute provider tools. Claude Native prioritizes request isolation and Pi-owned state. Bridge uses the official Agent SDK and adds optional delegation to Claude agents.
 
-This comparison was reviewed before the v0.1.7 release, when DirectSDK reported package version 0.1.6 on `main`. It compares that transport with [Bridge source at `b2e7255`](https://github.com/elidickinson/pi-claude-bridge/tree/b2e7255ece0b8bfd3a6429fd5c147fd59984c785), reviewed on October 13, 2026. It is a source and documentation comparison, not a head-to-head benchmark.
+This comparison was reviewed before the v0.1.7 release, when pi-claude-directsdk reported package version 0.1.6 on `main`. It compares that transport with [Bridge source at `b2e7255`](https://github.com/elidickinson/pi-claude-bridge/tree/b2e7255ece0b8bfd3a6429fd5c147fd59984c785), reviewed on October 13, 2026. It is a source and documentation comparison, not a head-to-head benchmark.
 
-| Dimension | DirectSDK | pi-claude-bridge |
+| Dimension | Claude Native | pi-claude-bridge |
 |---|---|---|
 | Transport and agent loop | Unmodified Claude CLI behind a local admission relay. Each Pi model call admits at most one upstream Messages request. | Official Agent SDK `query()`. An active query continues across Pi tool boundaries. |
 | Tool execution | Inert MCP advertises tools but never executes them. Pi receives executable calls only after the upstream response completes and the child exits. Native tools are disabled. | MCP handlers wait for Pi to execute tools and return results to the active query. Native tools are disabled in provider mode. |
@@ -19,7 +19,7 @@ This comparison was reviewed before the v0.1.7 release, when DirectSDK reported 
 | Verification | Offline regression suite plus installed-Pi startup checks, documented paid replay and cache measurements, and lifecycle checks. The offline suite does not replace real-upstream checks. | Provides offline unit tests and API-backed integration tests. Test availability alone does not prove greater reliability. |
 | Additional features | Focused inference provider. | Optional `AskClaude` delegation, including read-only and full native-tool modes. |
 
-The current DirectSDK branch also keeps later system messages on models whose metadata supports mid-conversation tool changes. It sends the initial tools, a deferred placeholder, later additions with `defer_loading: true`, and `tool_addition`/`tool_removal` blocks at assistant boundaries. Unsupported models keep the collapsed shape. The Bridge column reflects the reviewed snapshot and was not re-reviewed for this change.
+The current Claude Native branch also keeps later system messages on models whose metadata supports mid-conversation tool changes. It sends the initial tools, a deferred placeholder, later additions with `defer_loading: true`, and `tool_addition`/`tool_removal` blocks at assistant boundaries. Unsupported models keep the collapsed shape. The Bridge column reflects the reviewed snapshot and was not re-reviewed for this change.
 
 ### Cache evidence is not a speed comparison
 
@@ -29,11 +29,11 @@ The original 30-run baseline reported a **2,345.663 ms median provider completio
 
 ### Subscription and policy limits
 
-Using the official CLI or SDK does not, by itself, establish Anthropic approval of either extension. Anthropic's [subscription guidance](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan) states that Agent SDK, `claude -p`, and third-party app usage can still draw from subscription limits. Its [Agent SDK overview](https://platform.claude.com/docs/en/agent-sdk/overview) separately says that third-party developers need prior approval to offer claude.ai login or rate limits in their products. These statements address different conditions; neither establishes project-specific approval or explicitly endorses DirectSDK's HTTP admission relay. Billing and policy guidance can change.
+Using the official CLI or SDK does not, by itself, establish Anthropic approval of either extension. Anthropic's [subscription guidance](https://support.claude.com/en/articles/15036540-use-the-claude-agent-sdk-with-your-claude-plan) states that Agent SDK, `claude -p`, and third-party app usage can still draw from subscription limits. Its [Agent SDK overview](https://platform.claude.com/docs/en/agent-sdk/overview) separately says that third-party developers need prior approval to offer claude.ai login or rate limits in their products. These statements address different conditions; neither establishes project-specific approval or explicitly endorses Claude Native's HTTP admission relay. Billing and policy guidance can change.
 
 ### Which to choose
 
-Choose DirectSDK when you want Pi's current transcript and prompt to determine every request, with no mirrored Claude session and a hard one-request boundary. The trade-off is repeated child startup and history replay, plus custom transport maintenance.
+Choose Claude Native when you want Pi's current transcript and prompt to determine every request, with no mirrored Claude session and a hard one-request boundary. The trade-off is repeated child startup and history replay, plus custom transport maintenance.
 
 Choose Bridge when you prefer the official SDK interface, query continuation across tool boundaries, or optional Claude-agent delegation. The trade-off is mirrored-session recovery and a Claude Code instruction environment rather than direct forwarding of Pi's full system prompt. See its [compatibility notes and known issues](https://github.com/elidickinson/pi-claude-bridge/blob/b2e7255ece0b8bfd3a6429fd5c147fd59984c785/README.md#compatibility-with-other-extensions) before relying on prompt injection or session rebuild behavior.
 

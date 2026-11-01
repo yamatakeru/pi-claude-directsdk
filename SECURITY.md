@@ -2,12 +2,12 @@
 
 ## Supported versions
 
-Security fixes target the latest published release of pi-claude-directsdk. Older versions do not receive backported fixes.
-Use the Pi and Claude Code versions supported by that release; see the [README requirements](README.md#requirements).
+Security fixes land on `main`. Older commits do not receive backported fixes.
+Use the Pi and Claude Code versions that `main` supports; see the [README requirements](README.md#requirements).
 
 ## Report a vulnerability privately
 
-Use [GitHub private vulnerability reporting](https://github.com/joaomj/pi-claude-directsdk/security/advisories/new).
+Use [GitHub private vulnerability reporting](https://github.com/yamatakeru/pi-claude-native/security/advisories/new).
 Do not disclose vulnerabilities in public issues, discussions, or pull requests before coordinated disclosure.
 
 Include:
