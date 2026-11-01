@@ -54,6 +54,14 @@ Use the [verification guidance](testing.md) for local runtime checks.
 
 Merge the branch into `main` with a squash merge once CI passes. Installations that follow `main` pick the change up with `pi update git:github.com/yamatakeru/pi-claude-native`; there is no npm release.
 
+To release, bump `version` in `package.json` and both `version` fields at the top of `package-lock.json` in a pull request. After it is merged, tag the merge commit and publish the notes:
+
+```sh
+gh release create v<x.y.z> --target main --title v<x.y.z> --notes-file <notes>
+```
+
+Installations pinned to a tag stay on it until the user changes the ref.
+
 ## Security and dependencies
 
 Dependabot vulnerability alerts remain enabled. Automatic security-update and version-update pull requests are disabled.

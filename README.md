@@ -46,6 +46,8 @@ Install from Git. It follows `main`:
 pi install git:github.com/yamatakeru/pi-claude-native
 ```
 
+To stay on a release instead, add its tag, for example `git:github.com/yamatakeru/pi-claude-native@v0.4.0`; `pi update` does not move a pinned tag. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
+
 Start or restart interactive Pi, open `/model`, and wait for the catalog refresh. On a fresh install, this step must complete before selecting the model from the command line; later invocations can use the saved catalog, for example `pi --model claude-native/haiku`. `pi update --models` does not refresh this catalog.
 
 The extension uses the CLI login, not the Pi Anthropic login. The `npm install` flag enables the Claude Code installer for that command only.
@@ -89,7 +91,7 @@ Report vulnerabilities privately as described in [SECURITY.md](SECURITY.md); ple
 
 This is a Pi port of [Hermes Claude Subscription DirectSDK](https://github.com/NousResearch/hermes-official-plugins/tree/main/claude-subscription-directsdk). It began as a fork of [joaomj/pi-claude-directsdk](https://github.com/joaomj/pi-claude-directsdk), where fixes were tried in everyday use and reported upstream. When that project moved to the official Agent SDK in v1.0.0, this one continued from v0.3.1 with the direct transport and was renamed to avoid confusion with the npm package `pi-claude-directsdk`.
 
-Changes since v0.3.1 include cache reuse across calls ([#1](https://github.com/yamatakeru/pi-claude-native/issues/1), [#13](https://github.com/yamatakeru/pi-claude-native/pull/13)), Pi's thinking level passed as `--effort` ([#2](https://github.com/yamatakeru/pi-claude-native/issues/2)), clearer relay failures ([#4](https://github.com/yamatakeru/pi-claude-native/issues/4), [#7](https://github.com/yamatakeru/pi-claude-native/issues/7)), tool changes placed on the right assistant boundary ([#18](https://github.com/yamatakeru/pi-claude-native/issues/18)), Pi's docs guidance kept in the replacement `<docs>` section ([#30](https://github.com/yamatakeru/pi-claude-native/issues/30)), and quoted rejection text no longer failing as a billing error ([#20](https://github.com/yamatakeru/pi-claude-native/issues/20)).
+v0.4.0 is the first release under this name. Changes since v0.3.1 include cache reuse across calls ([#1](https://github.com/yamatakeru/pi-claude-native/issues/1), [#13](https://github.com/yamatakeru/pi-claude-native/pull/13)), Pi's thinking level passed as `--effort` ([#2](https://github.com/yamatakeru/pi-claude-native/issues/2)), clearer relay failures ([#4](https://github.com/yamatakeru/pi-claude-native/issues/4), [#7](https://github.com/yamatakeru/pi-claude-native/issues/7)), tool changes placed on the right assistant boundary ([#18](https://github.com/yamatakeru/pi-claude-native/issues/18)), Pi's docs guidance kept in the replacement `<docs>` section ([#30](https://github.com/yamatakeru/pi-claude-native/issues/30)), quoted rejection text no longer failing as a billing error ([#20](https://github.com/yamatakeru/pi-claude-native/issues/20)), and a stricter usage-credit opt-in ([#21](https://github.com/yamatakeru/pi-claude-native/issues/21)). Later changes are in the [release notes](https://github.com/yamatakeru/pi-claude-native/releases).
 
 ## Acknowledgments and license
 
