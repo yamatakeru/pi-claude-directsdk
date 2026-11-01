@@ -20,8 +20,8 @@ const usage: Usage = {
 function assistant(): AssistantMessage {
   return {
     role: "assistant",
-    api: "claude-directsdk",
-    provider: "claude-directsdk",
+    api: "claude-native",
+    provider: "claude-native",
     model: "claude-haiku-4-5-20251001",
     content: [
       { type: "thinking", thinking: "private", thinkingSignature: "signed" },
@@ -59,6 +59,26 @@ test("restores signed thinking only while the visible projection matches", () =>
     { type: "text", text: "private" },
     { type: "text", text: "edited" },
   ]);
+});
+
+test("restores signed thinking from a carrier saved under the pre-rename type", () => {
+  const message = assistant();
+  const native = {
+    role: "assistant" as const,
+    content: [
+      { type: "thinking" as const, thinking: "private", signature: "signed" },
+      { type: "text" as const, text: "visible" },
+    ],
+    stop_reason: "end_turn",
+  };
+  message.diagnostics = [{ ...encodeCarrier([native], messageProjection(message)), type: "pi-claude-directsdk/native" }];
+
+  const restored = prepareHistory([
+    { role: "user" as const, content: "go", timestamp: 0 },
+    message,
+    { role: "user" as const, content: "again", timestamp: 2 },
+  ], new Set(["read"]));
+  assert.deepEqual(restored.frames[1]?.message.content[0], native.content[0]);
 });
 
 test("rejects conflicting auth and backend overrides without the test bypass", () => {

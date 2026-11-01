@@ -19,7 +19,7 @@ import {
 } from "../src/billing.ts";
 import { PROVIDER_ID } from "../src/models.ts";
 import {
-  streamClaudeDirectSdk,
+  streamClaudeNative,
   defaultDeps,
   type CallDeps,
 } from "../src/stream.ts";
@@ -87,9 +87,9 @@ function model(): Model<Api> {
   return {
     id: "claude-haiku-4-5-20251001",
     name: "Haiku",
-    api: "claude-directsdk" as Api,
+    api: "claude-native" as Api,
     provider: PROVIDER_ID,
-    baseUrl: "process://claude-directsdk",
+    baseUrl: "process://claude-native",
     reasoning: false,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -112,7 +112,7 @@ test("usage credits are opt-in and rejections are actionable non-retryable billi
 });
 
 test("stops after an overage charge unless usage credits are allowed", async (t) => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-directsdk-billing-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-claude-native-billing-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const executable = join(root, "fake-claude.mjs");
   await writeFile(executable, FAKE_CLAUDE, "utf8");
@@ -138,11 +138,11 @@ test("stops after an overage charge unless usage credits are allowed", async (t)
     text = "",
   ): Promise<AssistantMessageEvent[]> => {
     const events: AssistantMessageEvent[] = [];
-    const stream = streamClaudeDirectSdk(model(), context, {
+    const stream = streamClaudeNative(model(), context, {
       timeoutMs: 5_000,
       env: {
-        PI_DIRECTSDK_TEST_UPSTREAM: "1",
-        CLAUDE_DIRECTSDK_COMMAND: executable,
+        PI_CLAUDE_NATIVE_TEST_UPSTREAM: "1",
+        PI_CLAUDE_NATIVE_COMMAND: executable,
         DISABLE_PROMPT_CACHING: "0",
         CLAUDE_CODE_PROMPT_CACHE_TTL: "1h",
         FAKE_OVERAGE: overage ? "1" : "0",

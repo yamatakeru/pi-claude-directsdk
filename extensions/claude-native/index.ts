@@ -2,7 +2,7 @@
 import { normalizeContext, registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
 import { getDocsPath, getExamplesPath, getReadmePath, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import { createDirectSdkProvider, PROVIDER_ID, streamSimple } from "../../src/provider.js";
+import { createClaudeNativeProvider, PROVIDER_ID, streamSimple } from "../../src/provider.js";
 
 /**
  * Pi's default docs section is rejected as third-party app usage when the child reports a
@@ -45,5 +45,5 @@ export default function (pi: ExtensionAPI) {
     options.sections.docs = DOCS_SECTION;
   });
   pi.on("session_shutdown", () => { unregisterApiProviders(PROVIDER_ID); });
-  pi.registerProvider(createDirectSdkProvider(message => report(message)));
+  pi.registerProvider(createClaudeNativeProvider(message => report(message)));
 }

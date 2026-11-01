@@ -27,7 +27,7 @@ export function resolveClaude(
       ? Array.isArray(command)
         ? command
         : [command]
-      : [env["CLAUDE_DIRECTSDK_COMMAND"] || "claude"];
+      : [env["PI_CLAUDE_NATIVE_COMMAND"] || "claude"];
   const head = parts[0];
   if (head === undefined || head === "") {
     return undefined;
@@ -74,8 +74,8 @@ function findOnPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
 /** Child environment for setup probes. Never forwards the override variable itself. */
 export function setupChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const child: NodeJS.ProcessEnv = { ...env };
-  const config = child["CLAUDE_DIRECTSDK_CONFIG_DIR"];
-  delete child["CLAUDE_DIRECTSDK_CONFIG_DIR"];
+  const config = child["PI_CLAUDE_NATIVE_CONFIG_DIR"];
+  delete child["PI_CLAUDE_NATIVE_CONFIG_DIR"];
   if (config) {
     child["CLAUDE_CONFIG_DIR"] = config;
   }

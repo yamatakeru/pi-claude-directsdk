@@ -12,7 +12,7 @@ GUARD = """export default function (pi) {
   let ready = false;
   let turnRequests = 0;
   let totalRequests = 0;
-  pi.registerCommand("directsdk-warm-ready", {
+  pi.registerCommand("claude-native-warm-ready", {
     description: "Enable the warm benchmark's three-request budget",
     handler: async () => { ready = true; },
   });
@@ -51,7 +51,7 @@ def run_warm(args, executable, env, directory, report):
         snapshot.write_bytes(data)
         command += ["--fork", str(snapshot)]
         report({"session_snapshot_bytes": len(data)})
-    env["PI_DIRECTSDK_PROMPT_HASHES"] = "1"
+    env["PI_CLAUDE_NATIVE_PROMPT_HASHES"] = "1"
     events = queue.Queue(maxsize=256)
     stopping = threading.Event()
     stderr_bytes = [0]
@@ -137,9 +137,9 @@ def run_warm(args, executable, env, directory, report):
         rpc("set_auto_retry", enabled=False)
         rpc("set_auto_compaction", enabled=False)
         commands = rpc("get_commands")
-        if not any(command.get("name") == "directsdk-warm-ready" for command in commands["commands"]):
+        if not any(command.get("name") == "claude-native-warm-ready" for command in commands["commands"]):
             raise RuntimeError("Warm request-budget guard did not load")
-        rpc("prompt", message="/directsdk-warm-ready")
+        rpc("prompt", message="/claude-native-warm-ready")
         report({"stage": "ready", "model": args.model, "paid_request_limit": REQUEST_LIMIT,
                 "dry_run": args.dry_run})
         if not args.dry_run:
@@ -166,7 +166,7 @@ def run_warm(args, executable, env, directory, report):
                 if assistant is None:
                     raise RuntimeError("Warm turn produced no assistant response")
                 diagnostics = [item for item in assistant.get("diagnostics", [])
-                               if item.get("type") == "pi-claude-directsdk/meta"]
+                               if item.get("type") == "pi-claude-native/meta"]
                 if len(diagnostics) != 1:
                     raise RuntimeError("Warm turn needs exactly one transport diagnostic")
                 details = diagnostics[0]["details"]

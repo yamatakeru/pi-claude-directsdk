@@ -18,12 +18,12 @@ export const MCP_SERVER_NAME = "pi";
 export const TOOL_NAME_PREFIX = `mcp__${MCP_SERVER_NAME}__`;
 
 /** Explicit test-mode bypass for the subscription env guard. Never set in production. */
-export const TEST_UPSTREAM_ENV = "PI_DIRECTSDK_TEST_UPSTREAM";
+export const TEST_UPSTREAM_ENV = "PI_CLAUDE_NATIVE_TEST_UPSTREAM";
 
 /** User override for the client label the native child reports. */
-export const ENTRYPOINT_ENV = "CLAUDE_DIRECTSDK_ENTRYPOINT";
+export const ENTRYPOINT_ENV = "PI_CLAUDE_NATIVE_ENTRYPOINT";
 /** Client label for `cc_entrypoint`. Unlabelled children fall into an SDK bucket. */
-export const DEFAULT_ENTRYPOINT = "pi-claude-directsdk";
+export const DEFAULT_ENTRYPOINT = "pi-claude-native";
 
 const CONFLICTING_API_VARS = [
   "ANTHROPIC_API_KEY",
@@ -94,7 +94,7 @@ export function replayCacheControl(
 /**
  * Names of conflicting native auth/backend overrides present in the merged
  * environment. Subscription mode rejects them; explicit test mode
- * (`PI_DIRECTSDK_TEST_UPSTREAM=1`) allows them for loopback and gateway
+ * (`PI_CLAUDE_NATIVE_TEST_UPSTREAM=1`) allows them for loopback and gateway
  * fixtures. Values are never returned.
  */
 export function checkEnvConflicts(env: NodeJS.ProcessEnv): string[] {
@@ -403,7 +403,7 @@ export function buildChildEnv(options: {
   body: Record<string, unknown>;
 }): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...options.baseEnv };
-  const config = env["CLAUDE_DIRECTSDK_CONFIG_DIR"];
+  const config = env["PI_CLAUDE_NATIVE_CONFIG_DIR"];
   if (config) {
     env["CLAUDE_CONFIG_DIR"] = config;
   }

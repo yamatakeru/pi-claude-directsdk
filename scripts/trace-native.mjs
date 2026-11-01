@@ -5,7 +5,7 @@ import { appendFileSync } from "node:fs";
 import { basename } from "node:path";
 
 const destination = process.env.PI_VERIFY_TRACE;
-const claude = process.env.CLAUDE_DIRECTSDK_COMMAND || "claude";
+const claude = process.env.PI_CLAUDE_NATIVE_COMMAND || "claude";
 const matches = command => typeof command === "string" &&
   (command === claude || basename(command) === basename(claude));
 const record = data => {

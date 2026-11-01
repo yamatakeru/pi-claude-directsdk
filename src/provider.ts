@@ -8,13 +8,13 @@ import { lazyStream } from "./lazy-stream.js";
 
 export { PROVIDER_ID };
 
-export function createDirectSdkProvider(report: (message: string) => void): Provider {
+export function createClaudeNativeProvider(report: (message: string) => void): Provider {
   let models: Model<Api>[] = [];
   let refreshedAt = 0;
   return {
     id: PROVIDER_ID,
-    name: "Claude DirectSDK",
-    baseUrl: "process://claude-directsdk",
+    name: "Claude Native",
+    baseUrl: "process://claude-native",
     auth: {
       apiKey: {
         name: "Claude CLI authentication",
@@ -51,13 +51,13 @@ export function createDirectSdkProvider(report: (message: string) => void): Prov
         } });
         if (!accepted) return;
         if (result.warnings.length) {
-          report(`Claude DirectSDK excluded models with incomplete metadata:\n${result.warnings.join("\n")}`);
+          report(`Claude Native excluded models with incomplete metadata:\n${result.warnings.join("\n")}`);
         }
         if (!result.models.length) throw new Error("No Claude models have complete, verified metadata");
       } catch (error) {
         if (context.signal.aborted) throw error;
         await context.publish({ persist: null, update: () => { models = []; refreshedAt = 0; } });
-        const message = `Claude DirectSDK catalog refresh failed: ${error instanceof Error ? error.message : error}. No pinned fallback is used.`;
+        const message = `Claude Native catalog refresh failed: ${error instanceof Error ? error.message : error}. No pinned fallback is used.`;
         report(message);
         throw new Error(message, { cause: error });
       }
@@ -71,7 +71,7 @@ export function streamSimple(
   model: Model<Api>, context: TranscriptContext, options?: SimpleStreamOptions,
 ): AssistantMessageEventStream {
   return lazyStream(model, async () => {
-    const { streamClaudeDirectSdk } = await import("./stream.js");
-    return streamClaudeDirectSdk(model, context, options);
+    const { streamClaudeNative } = await import("./stream.js");
+    return streamClaudeNative(model, context, options);
   });
 }

@@ -30,6 +30,6 @@ test("the override sets the label, and an empty override leaves the label to the
 test("an unusable override names the variable and the fix", () => {
   assert.throws(
     () => build({ [ENTRYPOINT_ENV]: "two words" }),
-    /CLAUDE_DIRECTSDK_ENTRYPOINT must be 1-64 characters/,
+    /PI_CLAUDE_NATIVE_ENTRYPOINT must be 1-64 characters/,
   );
 });

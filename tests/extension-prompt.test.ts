@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { getDocsPath, getExamplesPath, getReadmePath, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
-import createExtension from "../extensions/claude-directsdk/index.ts";
+import createExtension from "../extensions/claude-native/index.ts";
 import { PROVIDER_ID } from "../src/models.ts";
 
 /** The routing line Anthropic's server treats as a third-party app fingerprint. */
@@ -35,7 +35,7 @@ function docsSectionAfterStart(
   return options.sections["docs"];
 }
 
-test("a DirectSDK turn sends Pi's docs guidance without the routing line", () => {
+test("a Claude Native turn sends Pi's docs guidance without the routing line", () => {
   const docs = docsSectionAfterStart(PROVIDER_ID, { sections: { docs: PI_DOCS } });
   assert.ok(docs, "the docs section is still present");
   assert.notEqual(docs, PI_DOCS);

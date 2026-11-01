@@ -1,5 +1,5 @@
 /**
- * Pi `streamSimple` implementation for the Claude DirectSDK provider.
+ * Pi `streamSimple` implementation for the Claude Native provider.
  *
  * One Pi model call spawns one request-scoped `claude` child, replays Pi
  * history in native `stream-json` form, admits at most one upstream Messages
@@ -47,7 +47,7 @@ import {
   promptHashesEnabled,
 } from "./measurements.js";
 import {
-  DirectSdkError,
+  ClaudeNativeError,
   cancelledError,
   envConflictError,
   incompleteError,
@@ -92,7 +92,7 @@ import { spawnSupervised, stableChildCwd } from "./process.js";
 import type { ChildHandle } from "./process.js";
 
 const DEFAULT_TIMEOUT_MS = 180_000;
-const NATIVE_API = "claude-directsdk";
+const NATIVE_API = "claude-native";
 
 export interface CallDeps {
   spawn: (options: {
@@ -117,7 +117,7 @@ export const defaultDeps: CallDeps = {
   spawn: (options) => spawnSupervised(options),
   createRelay: (upstream, timeoutMs, options) => AdmissionRelay.create(upstream, timeoutMs, options),
   checkCli: (resolved, env) => qualifiedCli(resolved, env),
-  makeRequestDir: () => mkdtempSync(join(tmpdir(), "pi-directsdk-")),
+  makeRequestDir: () => mkdtempSync(join(tmpdir(), "pi-claude-native-")),
   childCwd: () => stableChildCwd(),
 };
 
@@ -218,7 +218,7 @@ interface PendingTool {
   json: string;
 }
 
-export function streamClaudeDirectSdk(
+export function streamClaudeNative(
   model: Model<Api>,
   context: TranscriptContext,
   options?: SimpleStreamOptions,
@@ -264,7 +264,7 @@ async function executeCall(
 
   const metaDiagnostic = (): AssistantMessageDiagnostic => {
     return {
-      type: "pi-claude-directsdk/meta",
+      type: "pi-claude-native/meta",
       timestamp: Date.now(),
       details: {
         nativeModel: nativeModelId,
@@ -300,7 +300,7 @@ async function executeCall(
       error instanceof Error ? error.message : JSON.stringify(error);
     const diagnostics = output.diagnostics ?? [];
     output.diagnostics = [
-      ...diagnostics.filter((diagnostic) => diagnostic.type !== "pi-claude-directsdk/meta"),
+      ...diagnostics.filter((diagnostic) => diagnostic.type !== "pi-claude-native/meta"),
       ...(latestRateLimit ? [rateLimitDiagnostic(latestRateLimit)] : []),
       metaDiagnostic(),
     ];
@@ -616,7 +616,7 @@ async function executeCall(
                 json: "",
               });
             } else {
-              throw new DirectSdkError(
+              throw new ClaudeNativeError(
                 "native",
                 `Unsupported native content block: ${String(block["type"])}`,
               );
@@ -903,7 +903,7 @@ async function executeCall(
       const name = typeof raw["name"] === "string" ? raw["name"] : "";
       const bare = toolBareName(name);
       if (!bare || !build.toolNames.includes(bare)) {
-        throw new DirectSdkError(
+        throw new ClaudeNativeError(
           "native",
           "Native returned a tool outside the current host inventory",
         );
@@ -1000,7 +1000,7 @@ function parseNativeLine(line: string): { type: string; [key: string]: unknown }
     }
     return parsed as { type: string; [key: string]: unknown };
   } catch (error) {
-    throw new DirectSdkError(
+    throw new ClaudeNativeError(
       "native",
       `Invalid native stream-json output: ${JSON.stringify(line.slice(0, 300))}`,
       { cause: error },
@@ -1081,7 +1081,7 @@ function refusalText(message: NativeAssistantMessage): string {
 function parseToolInput(input: unknown): JsonObject {
   const coerce = (value: unknown): JsonObject => {
     if (!isRecord(value)) {
-      throw new DirectSdkError("native", "Native tool input is not an object");
+      throw new ClaudeNativeError("native", "Native tool input is not an object");
     }
     // A JSON round-trip keeps the arguments within pi-ai's JsonValue type.
     return JSON.parse(JSON.stringify(value)) as JsonObject;

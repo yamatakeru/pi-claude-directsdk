@@ -12,7 +12,7 @@ import type {
   TranscriptContext,
 } from "@earendil-works/pi-ai/compat";
 import { PROVIDER_ID } from "../src/models.ts";
-import { streamClaudeDirectSdk, defaultDeps, type CallDeps } from "../src/stream.ts";
+import { streamClaudeNative, defaultDeps, type CallDeps } from "../src/stream.ts";
 
 // A high-thinking turn can spend the whole output budget before writing
 // anything. The native transport reports that as stop_reason max_tokens with
@@ -76,9 +76,9 @@ function model(): Model<Api> {
   return {
     id: "claude-haiku-5-5",
     name: "Haiku",
-    api: "claude-directsdk" as Api,
+    api: "claude-native" as Api,
     provider: PROVIDER_ID,
-    baseUrl: "process://claude-directsdk",
+    baseUrl: "process://claude-native",
     reasoning: true,
     input: ["text"],
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
@@ -92,7 +92,7 @@ async function fixture(t: { after: (fn: () => Promise<void>) => void }): Promise
   root: string;
   deps: CallDeps;
 }> {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-directsdk-truncation-")));
+  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-claude-native-truncation-")));
   t.after(() => rm(root, { recursive: true, force: true }));
   const executable = join(root, "fake-claude.mjs");
   await writeFile(executable, FAKE_CLAUDE, "utf8");
@@ -120,11 +120,11 @@ async function run(
   options: Partial<SimpleStreamOptions> = {},
 ): Promise<AssistantMessageEvent[]> {
   const events: AssistantMessageEvent[] = [];
-  const stream = streamClaudeDirectSdk(model(), context, {
+  const stream = streamClaudeNative(model(), context, {
     timeoutMs: 5_000,
     env: {
-      PI_DIRECTSDK_TEST_UPSTREAM: "1",
-      CLAUDE_DIRECTSDK_COMMAND: executable,
+      PI_CLAUDE_NATIVE_TEST_UPSTREAM: "1",
+      PI_CLAUDE_NATIVE_COMMAND: executable,
       ...env,
     },
     ...options,

@@ -33,8 +33,8 @@ function conversation(): Message[] {
     { role: "system", content: "beta is available", toolsAdded: [beta], timestamp: 2 },
     {
       role: "assistant",
-      api: "claude-directsdk",
-      provider: "claude-directsdk",
+      api: "claude-native",
+      provider: "claude-native",
       model: "claude-opus-5",
       content: [{ type: "text", text: "one" }],
       usage,
@@ -84,8 +84,8 @@ test("accepts historical calls to tools declared earlier in the transcript", () 
     { role: "user", content: "use alpha", timestamp: 0 },
     {
       role: "assistant",
-      api: "claude-directsdk",
-      provider: "claude-directsdk",
+      api: "claude-native",
+      provider: "claude-native",
       model: "claude-opus-5",
       content: [{ type: "toolCall", id: "t1", name: "alpha", arguments: {} }],
       usage,
@@ -114,8 +114,8 @@ test("accepts historical calls to tools declared earlier in the transcript", () 
 function directAssistant(text: string): Message {
   return {
     role: "assistant",
-    api: "claude-directsdk",
-    provider: "claude-directsdk",
+    api: "claude-native",
+    provider: "claude-native",
     model: "claude-opus-5",
     content: [{ type: "text", text }],
     usage,
