@@ -141,6 +141,24 @@ A loopback server recorded `/v1/messages` bodies from Claude Code 2.1.312 and 2.
 
 The gate the CLI applies before adding the line was not identified, so other accounts or CLI versions may add it even with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`. The child therefore also sets `CLAUDE_CODE_DISABLE_ARTIFACT=1`, which left these bodies unchanged where the line was absent. The extension does not use native tools, so turning off native artifacts removes nothing it relies on.
 
+### Replayed thinking and the assistant model
+
+Through v0.4.0 the replay restored signed thinking from the carrier, but Claude Code did not send it. A loopback capture with Claude Code 2.1.312 and 2.1.316, Opus 5.5 at effort `high`, and a signature taken from a real session replayed a 14-round tool loop. All 15 thinking blocks were in the replayed frames, and none were in the `/v1/messages` body.
+
+The cause is the assistant frame's `model`. `prepareHistory` sent only `role` and `content`. In the 2.1.316 binary, an assistant message without a string `model` counts as written by another model. The CLI keeps such thinking only when its "foreign thinking" setting allows it. That setting is the `tengu_rustling_pixel` feature flag, overridable with `CLAUDE_CODE_RUSTLING_PIXEL` (`all`, `upgrade` or `none`). It is `none` when `ANTHROPIC_BASE_URL` is not a first-party URL, as with this transport's relay. With the carrier's `model` on each restored frame, the same capture sent all 15 blocks.
+
+Prompt caching was not affected: the stripping was the same on every call, so the warm-turn measurements above still read the previous request. The model, however, did not see its earlier reasoning, as in [hermes-official-plugins#40](https://github.com/NousResearch/hermes-official-plugins/issues/40). Hermes replays the stored native message, `model` included, so it does not hit this.
+
+A paid run through the real API then checked the fix: Claude Code 2.1.316, `claude-haiku-5-5` at effort `high`, and a two-round tool loop calling `streamClaudeNative` directly. A logging proxy recorded only status and counts.
+
+| Call | Status | Earlier assistant messages | Thinking blocks sent | Cache-read tokens | Cache-write tokens |
+|---|---:|---:|---:|---:|---:|
+| 1 | 200 | 0 | 0 | 0 | 0 |
+| 2 | 200 | 1 | 1 | 0 | 901 |
+| 3 | 200 | 2 | 2 | 901 | 360 |
+
+The API accepted the replayed signed thinking, and call 3 read call 2's whole request. Call 1 wrote nothing, which suggests its prompt was below the model's minimum cacheable length.
+
 ### Mid-conversation system messages (earlier fork rewrite)
 
 These measurements used the fork's former opt-in relay rewrite (`PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, fork #12). It was removed in fork #18 in favour of upstream v0.2.0's tool changes, which send the same kind of request: the initial prompt and tools, a deferred placeholder, and later changes as `role: system` messages. The numbers below were not re-measured with upstream's implementation.

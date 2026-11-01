@@ -250,9 +250,15 @@ export function prepareHistory(
           for (const native of carrier.messages) {
             frames.push({
               type: "assistant",
-              message: { role: "assistant", content: deepClone(native.content).map(block =>
-                block.type === "tool_use" ? { ...block, id: nativeToolId(block.id) } : block,
-              ) },
+              message: {
+                // The CLI strips thinking from an assistant message without
+                // the model that wrote it, as from a different model.
+                ...(typeof native.model === "string" ? { model: native.model } : {}),
+                role: "assistant",
+                content: deepClone(native.content).map(block =>
+                  block.type === "tool_use" ? { ...block, id: nativeToolId(block.id) } : block,
+                ),
+              },
             });
           }
           break;

@@ -38,7 +38,7 @@ Rules:
 - Tool-call IDs that Claude cannot accept are mapped to valid native IDs. Tool results use the same mapping. Stored Pi IDs remain unchanged.
 - Thinking without a matching native carrier is replayed as ordinary assistant text. This allows switching providers during a session.
 - Other unsupported history is rejected with a `replay` error, never flattened into prose.
-- Signed native thinking survives only inside a durable carrier (`pi-claude-native/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly.
+- Signed native thinking survives only inside a durable carrier (`pi-claude-native/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly. A restored frame keeps the carrier's `model`: the CLI drops thinking from an assistant message without one, as written by another model (see [transport-measurements.md](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
 - Models with verified mid-conversation tool-change support keep later system messages. The initial system message supplies the system prompt and initial tools. Later tool additions and removals are injected as native system content at their assistant boundaries, and historical calls to any tool declared earlier in the transcript remain replayable. Response validation still uses the current Pi inventory.
 
 ### Request assembly (`src/request.ts`)
