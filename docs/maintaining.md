@@ -56,11 +56,14 @@ Use the [verification guidance](testing.md) for local runtime checks.
 
 Merge the branch into `main` with a squash merge once CI passes. Installations that follow `main` pick the change up with `pi update git:github.com/yamatakeru/pi-claude-native`; there is no npm release.
 
-To release, bump `version` in `package.json` and both `version` fields at the top of `package-lock.json` in a pull request. After it is merged, tag the merge commit and publish the notes:
+To release, bump `version` in `package.json` and both `version` fields at the top of `package-lock.json` in a pull request. The README's pinned-install example names the new tag, so create it right after the merge, on the squash commit the merge put on `main`. Push the tag first, then publish the release on it:
 
 ```sh
-gh release create v<x.y.z> --target main --title v<x.y.z> --notes-file <notes>
+git tag v<x.y.z> <squash-commit-sha> && git push origin v<x.y.z> &&
+  gh release create v<x.y.z> --verify-tag --title v<x.y.z> --notes-file <notes>
 ```
+
+`git push` refuses a tag that already exists on the remote and fails when the remote is unreachable, so the release is never published on another commit. `--verify-tag` publishes only on the pushed tag.
 
 Installations pinned to a tag stay on it until the user changes the ref.
 
