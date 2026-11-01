@@ -128,6 +128,19 @@ Limits:
 - After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour; the Hermes reference mitigates it with an extra turn-start marker. It is not part of this change.
 - A later CLI that changes these placements disables the affected step and shows up in `nativeContext`, not as a failed call.
 
+### Artifact scratchpad line under the custom label
+
+A loopback server recorded `/v1/messages` bodies from Claude Code 2.1.312 and 2.1.316 on macOS, run with this extension's child arguments and environment. No paid requests were made.
+
+| Child environment | Scratchpad line |
+|---|---|
+| As `buildChildEnv` sets it (`CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`), label `pi-claude-native` | Absent; the body matches the `sdk-cli` one apart from the label and `session_id` |
+| Without `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC`, label `pi-claude-native` or `claude-desktop` | Present, in the Environment reminder at `messages[1]`, with a per-process UUID path |
+| Same, plus `CLAUDE_CODE_DISABLE_ARTIFACT=1` | Absent; the body matches the `sdk-cli` one apart from the label and `session_id` |
+| Label `sdk-cli` | Absent in every case |
+
+The gate the CLI applies before adding the line was not identified, so other accounts or CLI versions may add it even with `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC=1`. The child therefore also sets `CLAUDE_CODE_DISABLE_ARTIFACT=1`, which left these bodies unchanged where the line was absent. The extension does not use native tools, so turning off native artifacts removes nothing it relies on.
+
 ### Mid-conversation system messages (earlier fork rewrite)
 
 These measurements used the fork's former opt-in relay rewrite (`PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, fork #12). It was removed in fork #18 in favour of upstream v0.2.0's tool changes, which send the same kind of request: the initial prompt and tools, a deferred placeholder, and later changes as `role: system` messages. The numbers below were not re-measured with upstream's implementation.

@@ -424,6 +424,9 @@ export function buildChildEnv(options: {
   if (entrypoint !== undefined) {
     env["CLAUDE_CODE_ENTRYPOINT"] = entrypoint;
   }
+  // Under a non-SDK label native can add a per-process scratchpad path to
+  // every request. See docs/transport-measurements.md.
+  env["CLAUDE_CODE_DISABLE_ARTIFACT"] = "1";
   env["DISABLE_AUTO_COMPACT"] = "1";
   env["DISABLE_COMPACT"] = "1";
   // Pi owns budgets; the native replayed reminder would invalidate cached history.
