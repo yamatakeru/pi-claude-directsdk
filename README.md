@@ -46,7 +46,7 @@ Install from Git. It follows `main`:
 pi install git:github.com/yamatakeru/pi-claude-native
 ```
 
-To stay on a release instead, add its tag, for example `git:github.com/yamatakeru/pi-claude-native@v0.4.0`; `pi update` does not move a pinned tag. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
+To stay on a release instead, add its tag, for example `git:github.com/yamatakeru/pi-claude-native@v0.5.0`; `pi update` does not move a pinned tag. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
 
 Start or restart interactive Pi, open `/model`, and wait for the catalog refresh. On a fresh install, this step must complete before selecting the model from the command line; later invocations can use the saved catalog, for example `pi --model claude-native/haiku`. `pi update --models` does not refresh this catalog.
 
