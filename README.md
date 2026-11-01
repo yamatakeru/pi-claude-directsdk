@@ -48,7 +48,7 @@ A bare `pi update` updates Pi itself, not its packages; `pi update --extensions`
 
 ### Moving from pi-claude-directsdk
 
-Remove the old package first (`pi remove npm:pi-claude-directsdk`, or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then install this one; `pi list` shows what is installed. The provider id is now `claude-native`, so select the model again in `/model` when resuming an older session. Signed thinking saved by the old extension still replays. Rename `CLAUDE_DIRECTSDK_*` settings to `PI_CLAUDE_NATIVE_*`; the old names are not read.
+Remove the old package first (`pi remove npm:pi-claude-directsdk`, or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then install this one; `pi list` shows what is installed. The provider id is now `claude-native`, so select the model again in `/model` when resuming an older session. Signed thinking saved by the old extension still replays for now; that compatibility will be removed in a later version. Rename `CLAUDE_DIRECTSDK_*` settings to `PI_CLAUDE_NATIVE_*`; the old names are not read.
 
 ## Changes since pi-claude-directsdk v0.3.1
 
