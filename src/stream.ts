@@ -293,8 +293,7 @@ async function executeCall(
     }
     measurements.mark("completionPublished");
     const aborted = isCancelled(error) || options.signal?.aborted === true;
-    // A failed or interrupted request is never reported as free: keep any
-    // usage captured before the failure instead of zeroing it.
+    // Keep any usage captured before the failure instead of zeroing it.
     output.stopReason = aborted ? "aborted" : "error";
     output.errorMessage =
       error instanceof Error ? error.message : JSON.stringify(error);
@@ -973,8 +972,7 @@ async function executeCall(
     stream.push({ type: "done", reason: output.stopReason, message: output });
     stream.end();
   } catch (error) {
-    // Preserve partial usage captured before the failure; the provider must
-    // never report a failed request as free when tokens were consumed.
+    // Preserve partial usage captured before the failure.
     if (started && relay?.capture.message?.usage) {
       const partial = mapUsage(relay.capture.message.usage);
       if (partial) {
