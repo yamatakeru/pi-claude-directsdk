@@ -22,6 +22,7 @@
     "scripts/trace-native.mjs",
     "docs/**/*",
     "README.md",
+    "CHANGELOG.md",
     "LICENSE"
   ],
   "publishConfig": {

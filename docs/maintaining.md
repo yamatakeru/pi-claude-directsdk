@@ -56,7 +56,14 @@ Use the [verification guidance](testing.md) for local runtime checks.
 
 Merge the branch into `main` with a squash merge once CI passes. Installations that follow `main` pick the change up with `pi update git:github.com/yamatakeru/pi-claude-native`; there is no npm release.
 
-To release, bump `version` in `package.json` and both `version` fields at the top of `package-lock.json` in a pull request. The README's pinned-install example names the new tag, so create it right after the merge, on the squash commit the merge put on `main`. Push the tag first, then publish the release on it:
+To release, open a pull request that:
+
+- bumps `version` in `package.json` and both `version` fields at the top of `package-lock.json`;
+- adds a `## [x.y.z] - YYYY-MM-DD` section at the top of `CHANGELOG.md`.
+
+Pi reads `CHANGELOG.md` and, on the first fresh launch after `pi update`, shows the sections newer than the version it last saw under "Extension Updates" (see Pi's `docs/packages.md`, "Show a changelog"). Pi compares against `version` in `package.json`, so a change merged without a version bump is never shown. Pi ends a section at the next `## ` line, so headings inside a section use `###`. Keep each section short and written for users; it is shown in full.
+
+The release notes start from that section and add what does not belong in Pi's notice, such as maintenance notes and how to pin the release. The README's pinned-install example names the new tag, so create it right after the merge, on the squash commit the merge put on `main`. Push the tag first, then publish the release on it:
 
 ```sh
 git tag v<x.y.z> <squash-commit-sha> && git push origin v<x.y.z> &&
