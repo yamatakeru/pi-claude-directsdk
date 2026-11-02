@@ -28,7 +28,14 @@ Use `--pi /absolute/path/to/pi` or `PI_VERIFY_PI` to select another installed ex
 
 ## Verified environments
 
-The current maintainer installation is Pi 1.3.0, confirmed with `pi --version`. The offline startup scenario (`npm run verify`) passes on this installation with no stderr and no observed Claude child starts. Paid model calls have not been reverified on Pi 1.3.0.
+The current maintainer installation is Pi 1.5.0 with Claude Code 2.1.316 on macOS arm64, confirmed with `pi --version` and `claude --version`. After the replacement `<docs>` section was updated for Pi 1.5.0, these checks passed:
+
+- Offline startup (`npm run verify`): no stderr and no observed Claude child starts.
+- Fresh model request (`fresh --paid`): a successful response with the user's full extension set.
+- Warm cache (`warm --paid`, no prior session): three successful requests, one upstream request each, stable Pi prompt and tool hashes, and cache reads of 0%, 98.68% and 99.85%.
+- Navigation, as temporary checks with `--tools read,bash`: asked how a script calls a classifier and whether Pi can generate images, Haiku 5.5 opened `docs/docs.json`, then `codemode.md`, and answered correctly. Both requests were accepted as plan usage.
+
+The replacement `<docs>` section depends on Anthropic's undocumented classification (see [Plan usage metering](usage.md#plan-usage-metering)). Repeat the fresh request after each Pi or Claude Code update, and after any change to Pi's default system prompt or to the replacement text.
 
 Before v0.1.7 was released, both compiled-Pi fixes passed these checks on macOS arm64 with compiled Pi 1.2.0 / Bun 1.3.14 and Claude Code 2.1.281:
 

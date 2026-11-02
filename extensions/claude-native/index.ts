@@ -11,13 +11,14 @@ import { createClaudeNativeProvider, PROVIDER_ID, streamSimple } from "../../src
  */
 const DOCS_SECTION =
   "This session runs inside Pi. If the user asks about Pi itself, for example its SDK, extensions, themes, " +
-  "skills, or terminal UI, look the answer up in Pi's own files instead of guessing. " +
+  "skills, or terminal UI, look the answer up in Pi's own files instead of guessing; other tasks do not need them. " +
   `The README is at ${getReadmePath()}, the guides are under ${getDocsPath()}, ` +
   `and runnable samples of extensions, custom tools, and SDK use are under ${getExamplesPath()}. ` +
   "Relative paths such as docs/... or examples/... point into those folders, not into the user's project. " +
   "Open docs/docs.json first: it lists every guide by title, covering subjects like prompt templates, " +
   "TUI components, keybindings, SDK integrations, custom providers, adding models, packages, " +
   "environment variables, MCP servers, and codemode. " +
+  "The codemode guide also covers classifiers, image models, and other models that do not chat. " +
   `For extensions, also read the matching sample under ${getExamplesPath()}/extensions, ` +
   "since the extension guide treats those samples as the implementation reference. " +
   "Before building anything for Pi, read the guides and samples that apply, read each guide to the end, " +
