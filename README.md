@@ -46,7 +46,7 @@ Install from Git. It follows `main`:
 pi install git:github.com/yamatakeru/pi-claude-native
 ```
 
-To stay on a release instead, add its tag, for example `git:github.com/yamatakeru/pi-claude-native@v0.5.0`; `pi update` does not move a pinned tag. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
+To stay on a release instead, add its tag, for example `git:github.com/yamatakeru/pi-claude-native@v0.6.0`; `pi update` does not move a pinned tag. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
 
 Start or restart interactive Pi, open `/model`, and wait for the catalog refresh. On a fresh install, this step must complete before selecting the model from the command line; later invocations can use the saved catalog, for example `pi --model claude-native/haiku`. `pi update --models` does not refresh this catalog.
 
@@ -64,7 +64,7 @@ A bare `pi update` updates Pi itself, not its packages; `pi update --extensions`
 
 ### Moving from pi-claude-directsdk
 
-Remove the old package first (`pi remove npm:pi-claude-directsdk`, or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then install this one; `pi list` shows what is installed. The provider id is now `claude-native`, so select the model again in `/model` when resuming an older session. Signed thinking saved by the old extension still replays for now; that compatibility will be removed in a later version. Rename `CLAUDE_DIRECTSDK_*` and `PI_DIRECTSDK_*` settings to `PI_CLAUDE_NATIVE_*`; the old names are not read.
+Remove the old package (`pi remove npm:pi-claude-directsdk` or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then install this one. The provider id and the environment variable names changed; see [0.4.0 in the changelog](CHANGELOG.md#040---2026-11-01). Since [0.6.0](CHANGELOG.md#060---2026-11-02), sessions saved by the old extension continue without their signed thinking; earlier turns replay as visible text and tool calls.
 
 ## Known issues
 

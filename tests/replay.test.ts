@@ -63,7 +63,7 @@ test("restores signed thinking only while the visible projection matches", () =>
   ]);
 });
 
-test("restores signed thinking from a carrier saved under the pre-rename type", () => {
+test("ignores a carrier saved under the pre-rename type", () => {
   const message = assistant();
   const native = {
     role: "assistant" as const,
@@ -80,7 +80,9 @@ test("restores signed thinking from a carrier saved under the pre-rename type", 
     message,
     { role: "user" as const, content: "again", timestamp: 2 },
   ], new Set(["read"]));
-  assert.deepEqual(restored.frames[1]?.message.content[0], native.content[0]);
+  const content = restored.frames[1]?.message.content ?? [];
+  assert.ok(content.length > 0, "the visible message still replays");
+  assert.equal(content.some((block) => block.type === "thinking"), false);
 });
 
 test("rejects conflicting auth and backend overrides without the test bypass", () => {

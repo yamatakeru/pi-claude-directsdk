@@ -2,6 +2,19 @@
 
 Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
+## [0.6.0] - 2026-11-02
+
+Verified with Pi 1.5.0 and Claude Code 2.1.316. Sessions saved by pi-claude-directsdk no longer replay their signed thinking.
+
+### Changed
+
+- The prose that replaces Pi's `<docs>` section again says that the codemode guide covers classifiers and image models, and that Pi's docs are needed only for questions about Pi itself. Both were in Pi's section but had been dropped ([#47](https://github.com/yamatakeru/pi-claude-native/pull/47)).
+- Pi shows this changelog on the first fresh launch after an update ([#48](https://github.com/yamatakeru/pi-claude-native/pull/48)).
+
+### Removed
+
+- Signed thinking saved by pi-claude-directsdk (carrier type `pi-claude-directsdk/native`) is no longer restored, as announced in 0.4.0. Such sessions still continue: their earlier turns replay as the visible text and tool calls, without the thinking.
+
 ## [0.5.0] - 2026-11-01
 
 Replayed thinking now reaches the model, and the cache keeps the conversation after long thinking loops.
