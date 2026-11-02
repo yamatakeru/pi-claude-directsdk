@@ -28,8 +28,10 @@ export function createClaudeNativeProvider(report: (message: string) => void): P
       if (!context.allowNetwork) {
         if (!models.length && context.stored?.checkedAt) {
           await context.publish({ update: () => {
-            models = context.stored!.models.map(model => ({ ...model,
-              name: `${model.name} (last verified snapshot)` }));
+            // The store is typed for every model type; this provider only persists chat models.
+            models = context.stored!.models
+              .filter((model): model is Model<Api> => (model.type ?? "chat") === "chat")
+              .map(model => ({ ...model, name: `${model.name} (last verified snapshot)` }));
             refreshedAt = context.stored!.checkedAt!;
           } });
         }
