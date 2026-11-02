@@ -64,7 +64,7 @@ A bare `pi update` updates Pi itself, not its packages; `pi update --extensions`
 
 ### Moving from pi-claude-directsdk
 
-Remove the old package (`pi remove npm:pi-claude-directsdk` or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then install this one. The provider id and the environment variable names changed; see [0.4.0 in the changelog](CHANGELOG.md#040---2026-11-01).
+Remove the old package (`pi remove npm:pi-claude-directsdk` or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then install this one. The provider id and the environment variable names changed; see [0.4.0 in the changelog](CHANGELOG.md#040---2026-11-01). Since [0.6.0](CHANGELOG.md#060---2026-11-02), sessions saved by the old extension continue without their signed thinking; earlier turns replay as visible text and tool calls.
 
 ## Known issues
 
