@@ -1,6 +1,6 @@
 # Changelog
 
-Pi shows the entries newer than the installed version on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
+Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
 ## [0.5.0] - 2026-11-01
 
