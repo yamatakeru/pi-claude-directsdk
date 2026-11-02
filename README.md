@@ -11,7 +11,7 @@ Use your Claude subscription as a model in Pi. Requests go through the official 
 - **Pi's history is the only history.** Every call replays Pi's current transcript, signed thinking included, into a fresh `claude -p` process. There is no Claude-side session to drift from Pi's, so branching, editing, and compaction need no resynchronisation.
 - **Pi runs every tool.** A response's tool calls, parallel ones included, reach Pi together after the response completes.
 - **Plan limits are protected.** Requests carry the extension's own client label instead of an SDK one, which [anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074) measured as drawing the 5-hour window faster. A turn charged to usage credits stops the session unless you opt in.
-- **The prompt cache is reused** across calls despite the replay: 99.6% to 99.8% cache-read share on warm turns in the recorded [measurements](docs/transport-measurements.md).
+- **The prompt cache is reused** across calls despite the replay: 98.6% to 99.9% cache-read share on warm turns in the recorded [measurements](docs/transport-measurements.md). The lower values come from short sessions, where each new turn is a larger share of the prompt.
 
 The costs: each call starts a new Claude Code process, which adds about half a second. The transport depends on Claude Code's internal `stream-json` and request formats, so only a qualified range of versions is supported. A local relay rewrites each request to keep the cache stable and admits one upstream request per call. Anthropic does not document this kind of use, and a policy or billing change could stop it working.
 
@@ -25,9 +25,9 @@ Other Pi extensions that use a Claude subscription through Claude Code:
 
 ## Requirements
 
-- Pi. Verified with Pi 1.4.0.
+- Pi. Verified with Pi 1.5.0.
 - Node 20 or later for Node-based Pi installations and local development. Compiled Pi uses its bundled runtime.
-- Claude Code in the qualified range `>=2.1.263 <2.2.0` (see `QUALIFIED_CLI_RANGE` in `src/models.ts`). Verified with 2.1.312.
+- Claude Code in the qualified range `>=2.1.263 <2.2.0` (see `QUALIFIED_CLI_RANGE` in `src/models.ts`). Verified with 2.1.316.
 - A Claude paid plan. The free plan excludes the CLI.
 - A Claude Code login via `claude auth login`.
 
@@ -36,7 +36,7 @@ Other Pi extensions that use a Claude subscription through Claude Code:
 Install the verified Claude Code version, then sign in through the official CLI:
 
 ```sh
-npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.312
+npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.316
 claude auth login
 ```
 

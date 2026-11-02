@@ -56,8 +56,11 @@ different identity, or set it to an empty string to let Claude Code label the se
 A custom label alone is not accepted for every prompt. Anthropic also rejects a request whose
 system prompt looks like another agent harness as third-party app usage, so while a Claude Native
 model is active Pi's `<docs>` section is replaced with the same guidance written as prose, with
-`docs/docs.json` as the index instead of Pi's list of topics and doc paths. Other providers keep
-Pi's prompt, and a custom prompt from `SYSTEM.md` is left alone.
+`docs/docs.json` as the index instead of Pi's list of topics and doc paths. `docs.json` lists the
+guides by title and path, but does not describe what each covers, so the prose names what a title
+does not show: classifiers and image models are covered by the codemode guide. Like Pi's section,
+it limits the docs to questions about Pi itself. Other providers keep Pi's prompt, and a custom
+prompt from `SYSTEM.md` is left alone.
 
 Both parts are a workaround for an undocumented check. An unrecognized label currently falls into
 the CLI's own client bucket, and the accepted prompt wording can change, so re-verify after a Pi
