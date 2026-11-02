@@ -1,0 +1,40 @@
+# Changelog
+
+Pi shows the entries newer than the installed version on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
+
+## [0.5.0] - 2026-11-01
+
+Replayed thinking now reaches the model, and the cache keeps the conversation after long thinking loops.
+
+### Changed
+
+- Signed thinking from earlier turns is sent again ([#42](https://github.com/yamatakeru/pi-claude-native/issues/42), [#43](https://github.com/yamatakeru/pi-claude-native/pull/43)). Through v0.4.0 the extension restored it from the session but Claude Code dropped it before the request, so in a tool loop the model did not see its earlier reasoning.
+- After a tool loop longer than the cache lookback, the next user turn reads the conversation before the loop from the cache instead of only the system prompt and tools ([#10](https://github.com/yamatakeru/pi-claude-native/issues/10), [#44](https://github.com/yamatakeru/pi-claude-native/pull/44)).
+
+### What to expect
+
+Requests in tool loops now carry the earlier thinking, so their input grows by those tokens. After the first write they are mostly read from the cache. The net effect on subscription usage has not been measured.
+
+## [0.4.0] - 2026-11-01
+
+First release under the name pi-claude-native. It continues pi-claude-directsdk v0.3.1 with the direct `claude -p` transport.
+
+### Moving from pi-claude-directsdk
+
+- Remove the old package (`pi remove npm:pi-claude-directsdk` or `pi remove git:github.com/yamatakeru/pi-claude-directsdk`), then run `pi install git:github.com/yamatakeru/pi-claude-native`.
+- The provider id is now `claude-native`. Select the model again in `/model` when you resume an older session.
+- Environment variables are now `PI_CLAUDE_NATIVE_*`. The old `CLAUDE_DIRECTSDK_*` and `PI_DIRECTSDK_*` names are not read.
+- Signed thinking saved by the old extension still replays for now. A later version removes this.
+
+### Changed since pi-claude-directsdk v0.3.1
+
+- Cache reuse across calls ([#1](https://github.com/yamatakeru/pi-claude-native/issues/1), [#13](https://github.com/yamatakeru/pi-claude-native/pull/13)).
+- Pi's thinking level passed to Claude Code as `--effort` ([#2](https://github.com/yamatakeru/pi-claude-native/issues/2)).
+- Clearer relay failures ([#4](https://github.com/yamatakeru/pi-claude-native/issues/4), [#7](https://github.com/yamatakeru/pi-claude-native/issues/7)).
+- Tool changes placed on the right assistant boundary ([#18](https://github.com/yamatakeru/pi-claude-native/issues/18)).
+- Pi's docs guidance kept in the replacement `<docs>` section ([#30](https://github.com/yamatakeru/pi-claude-native/issues/30)).
+- Quoted rejection text no longer fails a successful turn as a billing error ([#20](https://github.com/yamatakeru/pi-claude-native/issues/20), [#33](https://github.com/yamatakeru/pi-claude-native/pull/33)).
+- Claude Code runs with native artifacts off, so its scratchpad line cannot reach requests under the custom client label ([#34](https://github.com/yamatakeru/pi-claude-native/issues/34), [#36](https://github.com/yamatakeru/pi-claude-native/pull/36)).
+- `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS` allows charges only when set to `1`. Before, a typo or `disabled` turned the guard off ([#21](https://github.com/yamatakeru/pi-claude-native/issues/21), [#37](https://github.com/yamatakeru/pi-claude-native/pull/37)).
+- The model catalog survives a failed or stalled fetch of the mid-conversation page. Only tool changes are withheld ([#25](https://github.com/yamatakeru/pi-claude-native/issues/25), [#39](https://github.com/yamatakeru/pi-claude-native/pull/39)).
+- The docs match the code for the thinking-only truncation error and for failed-request cost reporting ([#26](https://github.com/yamatakeru/pi-claude-native/issues/26), [#38](https://github.com/yamatakeru/pi-claude-native/pull/38)).
