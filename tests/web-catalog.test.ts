@@ -112,6 +112,16 @@ for (const [wording, sentence] of [
   });
 }
 
+test("a model the mid-conversation list does not name keeps tool changes off", async (t) => {
+  const result = await catalogWithPage(t, ["  Mid-conversation system messages are available on Claude Fable 5.1 and Claude Haiku 5.5.", "", TOOL_CHANGES_BETA, ""].join("\n"));
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.withheld, []);
+  assert.deepEqual(result.models.map((model) => [model.id, model.compat]), [
+    ["claude-haiku-5-5", { supportsMidConvoToolChanges: true }],
+    ["claude-opus-5-5", undefined],
+  ]);
+});
+
 test("a mid-conversation list that does not name models withholds tool changes", async (t) => {
   const result = await catalogWithPage(t, ["  Mid-conversation system messages are available on all models.", "", TOOL_CHANGES_BETA, ""].join("\n"));
   assert.deepEqual(result.warnings, []);
