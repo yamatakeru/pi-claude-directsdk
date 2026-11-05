@@ -170,6 +170,8 @@ export class SseCapture {
       }
       for (const index of this.cut) this.unparsed.push(String(content[index]?.["name"] ?? ""));
       this.message.content = content.filter((_, index) => !this.cut.has(index)) as typeof this.message.content;
+      // Leave onStop safe to repeat: the indices no longer match the filtered content.
+      this.cut.clear();
     }
     this.complete = Boolean(
       this.message?.stop_reason && this.arguments.size === 0,
