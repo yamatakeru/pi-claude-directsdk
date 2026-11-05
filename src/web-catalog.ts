@@ -155,8 +155,7 @@ function thinkingMap(name: string, thinking: string, defaultEffort: string | und
  * Models Anthropic lists for mid-conversation tool changes. The page states
  * which models carry mid-conversation system messages, then makes tool changes
  * available on the same models. A page that no longer says so yields no
- * capability, never a guess. Both the current wording and the one before it
- * are accepted.
+ * capability, never a guess.
  */
 function toolChangeModels(page: string): Set<string> {
   const text = page.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
