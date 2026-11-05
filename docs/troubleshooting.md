@@ -17,6 +17,7 @@
 | Prompt is too long | `native` | Read the reported route and context window. Remove stale `contextWindow` overrides in `models.json` to use verified limits, or compact the session. |
 | Native request failed | `native` | Read the native detail in the message. |
 | `<model> spent its whole output budget on thinking and returned no answer` | `native` | The turn spent its whole output budget on thinking. Lower the thinking level or switch models, then retry. |
+| `<model> ran out of output tokens while writing the arguments of <tool>` | `native` | The output budget ended inside a tool call, with no text before it. The call was not run. Ask for smaller steps, such as a shorter file per write, or lower the thinking level, then retry. When text came before the call, the turn ends as truncated with that text instead. |
 | Upstream response incomplete | `upstream` | Retry the request. |
 | Request timed out | `timeout` | Retry the request. The default timeout is 180 seconds. |
 | Request cancelled | `cancelled` | Re-run the request. Cancel kills the full child process tree. |

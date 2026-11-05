@@ -105,7 +105,7 @@ The first request after this directory change can miss a previously cached nativ
 
 ### Stream conversion (`src/stream.ts`)
 
-The provider converts child stdout `stream-json` to Pi events. Native result errors are preserved even when stderr is empty. Prompt-length errors report the selected route and configured context window. Native tool calls are published only after the first upstream response is complete and the child has exited. Usage and stop reason come from the authoritative native usage. Incomplete native or upstream responses produce `incomplete` or `upstream` errors.
+The provider converts child stdout `stream-json` to Pi events. Native result errors are preserved even when stderr is empty. Prompt-length errors report the selected route and configured context window. Native tool calls are published only after the first upstream response is complete and the child has exited. A tool call whose streamed arguments are not valid JSON when the response stops at `max_tokens` is dropped, never run with guessed arguments; the turn ends as `length`. Anthropic does not validate streamed tool input, so a cut-off reply can end inside one. Usage and stop reason come from the authoritative native usage. Incomplete native or upstream responses produce `incomplete` or `upstream` errors.
 
 The provider reads `rate_limit_event.rate_limit_info`. If the authoritative response reports usage-credit overage and `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS` is not enabled, the turn fails with a non-retryable `billing` error after usage is captured. Completed and failed turns carry a `pi-claude-native/rate-limit` diagnostic. Upstream usage-credit rejection text maps to the same error.
 

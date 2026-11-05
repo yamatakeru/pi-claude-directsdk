@@ -31,6 +31,14 @@ export class SseCapture {
   private pending = "";
   private decoder = new TextDecoder();
   private arguments: Map<number, string> = new Map();
+  /**
+   * Names of tool calls whose streamed arguments are not valid JSON. Anthropic
+   * does not validate streamed tool input, so a reply cut off at max_tokens can
+   * end inside one. Such a call is dropped from the message, never run with
+   * guessed arguments.
+   */
+  readonly unparsed: string[] = [];
+  private cut = new Set<number>();
 
   feed(chunk: Buffer): void {
     this.pending += this.decoder.decode(chunk, { stream: true });
@@ -129,8 +137,12 @@ export class SseCapture {
     if (raw !== undefined) {
       this.arguments.delete(index);
       const block = this.message.content[index] as Record<string, unknown>;
-      // A no-argument tool call streams one input_json_delta with empty partial_json.
-      block["input"] = raw.trim() ? JSON.parse(raw) : {};
+      try {
+        // A no-argument tool call streams one input_json_delta with empty partial_json.
+        block["input"] = raw.trim() ? JSON.parse(raw) : {};
+      } catch {
+        this.cut.add(index);
+      }
     }
   }
 
@@ -149,6 +161,18 @@ export class SseCapture {
   }
 
   private onStop(): void {
+    if (this.message && this.cut.size > 0) {
+      const content = this.message.content as Array<Record<string, unknown>>;
+      if (this.message.stop_reason !== "max_tokens") {
+        throw new Error(
+          `Upstream tool input is not valid JSON (stop_reason ${String(this.message.stop_reason)})`,
+        );
+      }
+      for (const index of this.cut) this.unparsed.push(String(content[index]?.["name"] ?? ""));
+      this.message.content = content.filter((_, index) => !this.cut.has(index)) as typeof this.message.content;
+      // Leave onStop safe to repeat: the indices no longer match the filtered content.
+      this.cut.clear();
+    }
     this.complete = Boolean(
       this.message?.stop_reason && this.arguments.size === 0,
     );
