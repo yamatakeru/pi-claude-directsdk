@@ -8,7 +8,7 @@
 |---|---|---|
 | No `claude` on `PATH` | `missing` | Install with `npm install -g @anthropic-ai/claude-code` or set `PI_CLAUDE_NATIVE_COMMAND` to the executable path. |
 | CLI installed but not logged in | `logged-out` | Run `claude auth login` as the user Pi runs as, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) in the environment Pi runs in, or point `PI_CLAUDE_NATIVE_CONFIG_DIR` at a logged-in config directory. Then select the provider again. |
-| Conflicting auth or backend overrides | `env-conflict` | Remove the named variables from the launching environment. Values are never printed. |
+| Backend overrides | `env-conflict` | Remove the named variables from the launching environment. Values are never printed. |
 | A turn used usage credits | `billing` | The turn may already be charged. Later turns stop unless `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1` is set. Disable usage credits in the Claude account settings to stay on plan limits. |
 | Catalog refresh fails | catalog | Read the warning for the source or CLI failure. Open `/model` in interactive Pi and wait for refresh. No pinned fallback is used. |
 | Model excluded from catalog | metadata | Read the warning for the missing field. Update Claude Code if picker metadata is incomplete. Unverified limits and prices are never guessed. |
@@ -44,7 +44,7 @@ Check cache-read share in message diagnostics across a stable, sufficiently long
 
 ## Subscription guard
 
-Subscription mode refuses conflicting native auth and backend overrides in the merged environment: `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL`, `ANTHROPIC_FOUNDRY_API_KEY`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, and `CLAUDE_CODE_USE_FOUNDRY`. The error names the variables without printing values. The development override `PI_CLAUDE_NATIVE_TEST_UPSTREAM=1` bypasses this guard. The installed-Pi harness does not set it.
+Subscription mode refuses backend overrides in the merged environment: `ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, and `CLAUDE_CODE_USE_FOUNDRY`. The error names the variables without printing values. API credentials (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, and `ANTHROPIC_FOUNDRY_API_KEY`) are not refused; they are left out of the environment of every Claude Code process, so it signs in with the subscription login. The development override `PI_CLAUDE_NATIVE_TEST_UPSTREAM=1` bypasses this guard. The installed-Pi harness does not set it.
 
 ## Usage credits
 

@@ -49,7 +49,7 @@ export function loggedOutError(detail?: string): ClaudeNativeError {
 export function envConflictError(names: string[]): ClaudeNativeError {
   return new ClaudeNativeError(
     "env-conflict",
-    "Subscription mode refuses conflicting native auth/backend overrides: " +
+    "Subscription mode refuses backend overrides: " +
       names.join(", ") +
       ". Remove them from the launching environment. " +
       "Values are never printed.",

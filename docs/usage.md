@@ -36,6 +36,8 @@ Success and failure diagnostics include request-phase timings, replay counts, up
 
 Cache-read share measures token reuse, not subscription allowance deductions. Prefix hashes cover the Pi-supplied system prompt and tool definitions; they do not detect system-prompt changes added by Claude Code. Diagnostics store hashes, not the prompt or tool definitions.
 
+Claude Native always uses the Claude Code login. It does not pass `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, or `ANTHROPIC_FOUNDRY_API_KEY` to Claude Code, so those can stay set for Pi's own `anthropic` provider without billing the API.
+
 See [docs/troubleshooting.md](troubleshooting.md) for login and environment errors.
 
 ## Plan usage metering
