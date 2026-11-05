@@ -55,6 +55,9 @@ export function createClaudeNativeProvider(report: (message: string) => void): P
         if (result.warnings.length) {
           report(`Claude Native excluded models with incomplete metadata:\n${result.warnings.join("\n")}`);
         }
+        if (result.withheld.length) {
+          report(`Claude Native left optional features off because Anthropic's docs did not confirm them:\n${result.withheld.join("\n")}`);
+        }
         if (!result.models.length) throw new Error("No Claude models have complete, verified metadata");
       } catch (error) {
         if (context.signal.aborted) throw error;

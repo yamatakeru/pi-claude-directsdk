@@ -12,6 +12,7 @@
 | A turn used usage credits | `billing` | The turn may already be charged. Later turns stop unless `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1` is set. Disable usage credits in the Claude account settings to stay on plan limits. |
 | Catalog refresh fails | catalog | Read the warning for the source or CLI failure. Open `/model` in interactive Pi and wait for refresh. No pinned fallback is used. |
 | Model excluded from catalog | metadata | Read the warning for the missing field. Update Claude Code if picker metadata is incomplete. Unverified limits and prices are never guessed. |
+| Optional features left off | metadata | Anthropic's mid-conversation page could not be read or no longer names its models. Models stay usable, but a tool change misses the prompt cache. Check the page; if its wording changed, `toolChangeModels` in `src/web-catalog.ts` needs the new sentence. |
 | No Claude Native models on a fresh offline install | catalog | Connect once, start interactive Pi, and open `/model`. Wait for refresh before selecting a model from the command line. |
 | History cannot be replayed | `replay` | Compact or restart the session. Common causes: an empty assistant message, assistant prefill, an unsupported content block, or a tool call outside the current inventory on a model without mid-conversation tool changes. |
 | Prompt is too long | `native` | Read the reported route and context window. Remove stale `contextWindow` overrides in `models.json` to use verified limits, or compact the session. |

@@ -60,9 +60,81 @@ async function catalogWithout(
   const result = await loadWebCatalog([], new AbortController().signal);
   assert.deepEqual(result.models.map((model) => model.id), ["claude-haiku-5-5"]);
   assert.equal(result.models[0]?.compat, undefined);
-  assert.equal(result.warnings.length, 1);
-  return result.warnings[0]!;
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.withheld.length, 1);
+  return result.withheld[0]!;
 }
+
+const MID_CONVERSATION = `${ROOT}/build-with-claude/mid-conversation-system-messages.md`;
+
+// The shared pages plus Claude Opus 5.5, so a listed name enables every model it names.
+const TWO_MODELS: Record<string, string> = {
+  ...PAGES,
+  [`${ROOT}/about-claude/models/overview.md`]: [
+    "[Claude Opus 5.5](https://platform.claude.com/docs/en/models/opus-5-5/overview)",
+    "[Claude Haiku 5.5](https://platform.claude.com/docs/en/models/haiku-5-5/overview)",
+    "",
+    "| Feature | Claude Opus 5.5 | Claude Haiku 5.5 |",
+    "|---|---|---|",
+    "| Claude API ID | claude-opus-5-5 | claude-haiku-5-5 |",
+    "",
+  ].join("\n"),
+  [`${ROOT}/about-claude/pricing.md`]: PAGES[`${ROOT}/about-claude/pricing.md`]!.replace(
+    "| Claude Haiku 5.5 |",
+    "| Claude Opus 5.5 | $5 / MTok | $6.25 / MTok | $10 / MTok | $0.5 / MTok | $25 / MTok |\n| Claude Haiku 5.5 |",
+  ),
+  [`${ROOT}/models/opus-5-5/overview.md`]: PAGES[`${ROOT}/models/haiku-5-5/overview.md`]!.replace("claude-haiku-5-5", "claude-opus-5-5"),
+};
+
+async function catalogWithPage(t: test.TestContext, page: string) {
+  t.mock.method(globalThis, "fetch", async (url: string) => {
+    const body = url === MID_CONVERSATION ? page : TWO_MODELS[url];
+    return body === undefined ? new Response("", { status: 404 }) : new Response(body);
+  });
+  return loadWebCatalog([], new AbortController().signal);
+}
+
+const TOOL_CHANGES_BETA = "  [Mid-conversation tool changes](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages#mid-conversation-tool-changes) are in beta on the same models.";
+
+for (const [wording, sentence] of [
+  // As published on 2026-11-05.
+  ["current", "  Mid-conversation system messages are available on Claude Fable 5.1, [Claude Mythos 5.1](https://platform.claude.com/docs/en/models/mythos-5-1/overview), Claude Opus 5.5, and Claude Haiku 5.5. No beta header is required for mid-conversation system messages."],
+  ["previous", "  This feature is available on Claude Opus 5.5 and Claude Haiku 5.5."],
+] as const) {
+  test(`the ${wording} mid-conversation wording turns on tool changes for the listed models`, async (t) => {
+    const result = await catalogWithPage(t, ["<Note>", sentence, "", TOOL_CHANGES_BETA, "</Note>", ""].join("\n"));
+    assert.deepEqual(result.warnings, []);
+    assert.deepEqual(result.withheld, []);
+    assert.deepEqual(result.models.map((model) => [model.id, model.compat]), [
+      ["claude-haiku-5-5", { supportsMidConvoToolChanges: true }],
+      ["claude-opus-5-5", { supportsMidConvoToolChanges: true }],
+    ]);
+  });
+}
+
+test("a model the mid-conversation list does not name keeps tool changes off", async (t) => {
+  const result = await catalogWithPage(t, ["  Mid-conversation system messages are available on Claude Fable 5.1 and Claude Haiku 5.5.", "", TOOL_CHANGES_BETA, ""].join("\n"));
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.withheld, []);
+  assert.deepEqual(result.models.map((model) => [model.id, model.compat]), [
+    ["claude-haiku-5-5", { supportsMidConvoToolChanges: true }],
+    ["claude-opus-5-5", undefined],
+  ]);
+});
+
+test("a mid-conversation list that does not name models withholds tool changes", async (t) => {
+  const result = await catalogWithPage(t, ["  Mid-conversation system messages are available on all models.", "", TOOL_CHANGES_BETA, ""].join("\n"));
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.withheld, ["mid-conversation tool changes: unrecognized model in mid-conversation availability: all models"]);
+  assert.deepEqual(result.models.map((model) => model.compat), [undefined, undefined]);
+});
+
+test("a mid-conversation page that no longer names its models withholds tool changes", async (t) => {
+  const result = await catalogWithPage(t, ["The feature works on recent models.", "", TOOL_CHANGES_BETA, ""].join("\n"));
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.withheld, ["mid-conversation tool changes: missing mid-conversation model availability"]);
+  assert.deepEqual(result.models.map((model) => model.compat), [undefined, undefined]);
+});
 
 test("an unavailable mid-conversation page withholds tool changes but keeps the catalog", async (t) => {
   const warning = await catalogWithout(t, async () => new Response("", { status: 503 }));
