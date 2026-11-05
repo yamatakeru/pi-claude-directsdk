@@ -34,7 +34,8 @@ for await (const line of input) {
     body: JSON.stringify({ model: "claude-haiku-5-5", messages: [{ role: "user", content: "hi" }] }),
   });
   await response.text();
-  process.exit(1);
+  process.exitCode = 1;
+  break;
 }
 `;
 
