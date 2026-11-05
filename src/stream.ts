@@ -802,7 +802,7 @@ async function executeCall(
     const calls = blocksOf(authoritative, "tool_use");
     // A call cut off at max_tokens is dropped from the capture. Claude Code
     // keeps it and answers it locally, which needs a second turn.
-    const cutCalls = used ? relay.capture.unparsed : [];
+    const cutCalls = relay.capture.unparsed;
     const boundary =
       (calls.length > 0 || cutCalls.length > 0) && result?.subtype === "error_max_turns" && exitCode === 1;
     if (

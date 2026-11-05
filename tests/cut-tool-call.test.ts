@@ -16,8 +16,6 @@ import { SseCapture } from "../src/admission.ts";
 import { PROVIDER_ID } from "../src/models.ts";
 import { defaultDeps, streamClaudeNative, type CallDeps } from "../src/stream.ts";
 
-// Anthropic does not validate streamed tool input, so a reply cut off at
-// max_tokens can end inside a tool call's arguments.
 const usage = { input_tokens: 3, output_tokens: 64 };
 
 function sse(text: string | null, stopReason = "max_tokens"): string {
@@ -79,7 +77,8 @@ for await (const line of input) {
     message: { id: "msg_cut", role: "assistant", model: "claude-haiku-5-5", content, stop_reason: "max_tokens", usage },
   }));
   console.log(JSON.stringify({ type: "result", subtype: "error_max_turns", is_error: true, num_turns: 2, usage, total_cost_usd: 0 }));
-  process.exit(1);
+  process.exitCode = 1;
+  break;
 }
 `;
 
