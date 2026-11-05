@@ -1,24 +1,24 @@
 /**
  * Cache-preserving native representation of mid-conversation tool changes.
  *
- * When the model supports Anthropic's mid-conversation tool-change beta, the
- * leading system message supplies the initial tools, later additions are
- * deferred declarations, and every later system message becomes native
- * `tool_addition`/`tool_removal` content at its assistant boundary. Unsupported
- * models keep the collapsed request shape.
+ * When the model supports Anthropic's mid-conversation tool changes, the
+ * request's tool list is the initial tools plus a deferred placeholder and
+ * never changes. Every later system message becomes native content at its
+ * assistant boundary: later tools are defined by value in `tool_addition`
+ * blocks, which also covers a tool redefined under the same name, and
+ * withdrawn by `tool_removal`. Unsupported models keep the collapsed request
+ * shape.
  */
 
 import {
-  getDeclaredTools,
   getInitialSystemMessage,
-  hasToolRedefinitions,
   renderSystemMessageUpdate,
 } from "@earendil-works/pi-ai/compat";
 import type { Message, SystemMessage } from "@earendil-works/pi-ai/compat";
-import { TOOL_NAME_PREFIX, prepareTools, toolPrefixedName } from "./request.js";
+import { prepareTools, toolPrefixedName } from "./request.js";
 import { replayAssistantCount } from "./replay.js";
 
-export const NATIVE_TOOL_CHANGES_BETA = "mid-conversation-tool-changes-2026-07-01";
+export const NATIVE_TOOL_CHANGES_BETA = "inline-tools-2026-09-15";
 
 /** Keeps the deferred-tool prompt scaffolding stable from the first request. */
 const DEFERRED_TOOL_PLACEHOLDER = {
@@ -47,25 +47,27 @@ function nativeSystemBlocks(message: SystemMessage): Array<Record<string, unknow
   if (text) {
     blocks.push({ type: "text", text });
   }
+  const added = message.toolsAdded ?? [];
+  const redefined = new Set(added.map((tool) => tool.name));
   for (const tool of message.toolsRemoved ?? []) {
+    // A definition under the same name replaces the old one.
+    if (redefined.has(tool.name)) continue;
     blocks.push({
       type: "tool_removal",
       tool: { type: "tool_reference", name: toolPrefixedName(tool.name) },
     });
   }
-  for (const tool of message.toolsAdded ?? []) {
-    blocks.push({
-      type: "tool_addition",
-      tool: { type: "tool_reference", name: toolPrefixedName(tool.name) },
-    });
+  for (const definition of prepareTools(added).nativeTools) {
+    blocks.push({ type: "tool_addition", tool: { type: "tool_definition", definition } });
   }
   return blocks;
 }
 
 /**
  * Build the native tool declarations and system injections for a transcript.
- * Returns undefined when the model is unsupported, the leading system message
- * declares no tools, or a tool is redefined with different content.
+ * Returns undefined when the model is unsupported or the leading system
+ * message declares no tools: Anthropic rejects a tool list where every tool is
+ * deferred.
  */
 export function prepareNativeTranscript(
   messages: Message[],
@@ -73,36 +75,9 @@ export function prepareNativeTranscript(
 ): NativeTranscriptPlan | undefined {
   const initial = getInitialSystemMessage(messages);
   const initialTools = initial?.toolsAdded ?? [];
-  if (!supported || initialTools.length === 0 || hasToolRedefinitions(messages)) {
+  if (!supported || initialTools.length === 0) {
     return undefined;
   }
-
-  const declared = getDeclaredTools(messages);
-  const prepared = prepareTools(declared);
-  const nativeByName = new Map(
-    prepared.nativeTools.map((tool) => [String(tool.name).slice(TOOL_NAME_PREFIX.length), tool]),
-  );
-  const initialNames = new Set(initialTools.map((tool) => tool.name));
-  const initialNative = initialTools.map((tool) => {
-    const native = nativeByName.get(tool.name);
-    if (!native) {
-      throw new Error(`Declared tool is missing from the native tool set: ${tool.name}`);
-    }
-    return structuredClone(native);
-  });
-  // No tool-level cache_control: Claude Code already sends two system
-  // breakpoints and a tail breakpoint, and replay adds a history anchor.
-  // Anthropic accepts at most four, so a tool breakpoint would reject every
-  // turn that has replayed history.
-  const laterNative = declared
-    .filter((tool) => !initialNames.has(tool.name))
-    .map((tool) => {
-      const native = nativeByName.get(tool.name);
-      if (!native) {
-        throw new Error(`Declared tool is missing from the native tool set: ${tool.name}`);
-      }
-      return { ...structuredClone(native), defer_loading: true };
-    });
 
   const systemInjections: NativeSystemInjection[] = [];
   let pending: Array<Array<Record<string, unknown>>> = [];
@@ -133,11 +108,11 @@ export function prepareNativeTranscript(
   flush(null);
 
   return {
-    requestTools: [
-      ...initialNative,
-      structuredClone(DEFERRED_TOOL_PLACEHOLDER),
-      ...laterNative,
-    ],
+    // No tool-level cache_control: Claude Code already sends two system
+    // breakpoints and a tail breakpoint, and replay adds a history anchor.
+    // Anthropic accepts at most four, so a tool breakpoint would reject every
+    // turn that has replayed history.
+    requestTools: [...prepareTools(initialTools).nativeTools, structuredClone(DEFERRED_TOOL_PLACEHOLDER)],
     systemInjections,
     assistantFrames: assistantOrdinal,
   };
