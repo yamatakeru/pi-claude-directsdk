@@ -159,6 +159,19 @@ A paid run through the real API then checked the fix: Claude Code 2.1.316, `clau
 
 The API accepted the replayed signed thinking, and call 3 read call 2's whole request. Call 1 wrote nothing, which suggests its prompt was below the model's minimum cacheable length.
 
+Claude Code 2.1.318 "Removed the 2.1.288 fix that kept the model's earlier thinking when resuming a conversation started on 2.1.286 or earlier; that thinking can now be dropped." The paid check was repeated on 2.1.318 on 2026-11-05, with the same model, effort and proxy. A fourth call asked a follow-up question after the tool loop.
+
+| Call | Status | Earlier assistant messages | Thinking blocks sent | Thinking blocks returned | Cache-read tokens | Cache-write tokens |
+|---|---:|---:|---:|---:|---:|---:|
+| 1 | 200 | 0 | 0 | 0 | 545 | 0 |
+| 2 | 200 | 1 | 0 | 0 | 919 | 0 |
+| 3 | 200 | 2 | 0 | 1 | 979 | 0 |
+| 4 | 200 | 3 | 1 | 1 | 979 | 175 |
+
+Calls 1 and 2 returned no thinking, so calls 2 and 3 had none to send. The thinking returned by call 3 was sent with call 4 and accepted. Call 1 read a prefix that an earlier attempt with the same transcript had written.
+
+So on 2.1.318, replayed signed thinking is still sent and accepted. The transcript was built for this check, not started on Claude Code 2.1.286 or earlier, so the case the change names was not tested. This transport replays history over stdin on every call instead of resuming a Claude Code session file, so the change most likely does not apply to it; that is an inference, not a measurement.
+
 ### Mid-conversation system messages (earlier fork rewrite)
 
 These measurements used the fork's former opt-in relay rewrite (`PI_DIRECTSDK_MID_CONVERSATION_SYSTEM=1`, fork #12). It was removed in fork #18 in favour of upstream v0.2.0's tool changes, which send the same kind of request: the initial prompt and tools, a deferred placeholder, and later changes as `role: system` messages. The numbers below were not re-measured with upstream's implementation.
