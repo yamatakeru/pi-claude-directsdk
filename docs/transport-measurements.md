@@ -159,7 +159,7 @@ A paid run through the real API then checked the fix: Claude Code 2.1.316, `clau
 
 The API accepted the replayed signed thinking, and call 3 read call 2's whole request. Call 1 wrote nothing, which suggests its prompt was below the model's minimum cacheable length.
 
-Claude Code 2.1.318 "Removed the 2.1.288 fix that kept the model's earlier thinking when resuming a conversation started on 2.1.286 or earlier; that thinking can now be dropped." Every call of this transport resumes a replayed conversation, so the paid check was repeated on 2.1.318 on 2026-11-05, with the same model, effort and proxy. A fourth call asked a follow-up question after the tool loop.
+Claude Code 2.1.318 "Removed the 2.1.288 fix that kept the model's earlier thinking when resuming a conversation started on 2.1.286 or earlier; that thinking can now be dropped." The paid check was repeated on 2.1.318 on 2026-11-05, with the same model, effort and proxy. A fourth call asked a follow-up question after the tool loop.
 
 | Call | Status | Earlier assistant messages | Thinking blocks sent | Thinking blocks returned | Cache-read tokens | Cache-write tokens |
 |---|---:|---:|---:|---:|---:|---:|
@@ -169,6 +169,8 @@ Claude Code 2.1.318 "Removed the 2.1.288 fix that kept the model's earlier think
 | 4 | 200 | 3 | 1 | 1 | 979 | 175 |
 
 Calls 1 and 2 returned no thinking, so calls 2 and 3 had none to send. The thinking returned by call 3 was sent with call 4 and accepted. Call 1 read a prefix that an earlier attempt with the same transcript had written.
+
+So on 2.1.318, replayed signed thinking is still sent and accepted. The transcript was built for this check, not started on Claude Code 2.1.286 or earlier, so the case the change names was not tested. This transport replays history over stdin on every call instead of resuming a Claude Code session file, so the change most likely does not apply to it; that is an inference, not a measurement.
 
 ### Mid-conversation system messages (earlier fork rewrite)
 

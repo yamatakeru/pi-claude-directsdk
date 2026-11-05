@@ -33,7 +33,7 @@ The current maintainer installation is Pi 1.5.0 with Claude Code 2.1.318 on macO
 - Offline startup (`npm run verify`): no stderr and no observed Claude child starts.
 - Fresh model request (`fresh --paid`): a successful response with the user's full extension set.
 - Warm cache (`warm --paid`, no prior session): three successful requests, one upstream request each, stable Pi prompt and tool hashes, and cache reads of 0%, 98.68% and 99.87%.
-- Replayed thinking, as a temporary check: signed thinking from an earlier turn was still sent and accepted (see [Replayed thinking and the assistant model](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
+- Replayed thinking, as a temporary check: signed thinking from an earlier turn was still sent and accepted; conversations started on 2.1.286 or earlier were not tested (see [Replayed thinking and the assistant model](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
 
 After the replacement `<docs>` section was updated for Pi 1.5.0, a navigation check ran on Claude Code 2.1.316 as temporary checks with `--tools read,bash`. Asked how a script calls a classifier and whether Pi can generate images, Haiku 5.5 opened `docs/docs.json`, then `codemode.md`, and answered correctly. Both requests were accepted as plan usage.
 
