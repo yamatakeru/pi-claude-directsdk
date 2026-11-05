@@ -60,9 +60,42 @@ async function catalogWithout(
   const result = await loadWebCatalog([], new AbortController().signal);
   assert.deepEqual(result.models.map((model) => model.id), ["claude-haiku-5-5"]);
   assert.equal(result.models[0]?.compat, undefined);
-  assert.equal(result.warnings.length, 1);
-  return result.warnings[0]!;
+  assert.deepEqual(result.warnings, []);
+  assert.equal(result.withheld.length, 1);
+  return result.withheld[0]!;
 }
+
+const MID_CONVERSATION = `${ROOT}/build-with-claude/mid-conversation-system-messages.md`;
+
+async function catalogWithPage(t: test.TestContext, page: string) {
+  t.mock.method(globalThis, "fetch", async (url: string) =>
+    new Response(url === MID_CONVERSATION ? page : PAGES[url] ?? "", { status: url === MID_CONVERSATION || PAGES[url] ? 200 : 404 }));
+  return loadWebCatalog([], new AbortController().signal);
+}
+
+const TOOL_CHANGES_BETA = "  [Mid-conversation tool changes](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages#mid-conversation-tool-changes) are in beta on the same models.";
+
+for (const [wording, sentence] of [
+  // As published on 2026-11-05.
+  ["current", "  Mid-conversation system messages are available on Claude Fable 5.1, [Claude Mythos 5.1](https://platform.claude.com/docs/en/models/mythos-5-1/overview), Claude Opus 5.5, and Claude Haiku 5.5. No beta header is required for mid-conversation system messages."],
+  ["previous", "  This feature is available on Claude Opus 5.5 and Claude Haiku 5.5."],
+] as const) {
+  test(`the ${wording} mid-conversation wording turns on tool changes for the listed models`, async (t) => {
+    const result = await catalogWithPage(t, ["<Note>", sentence, "", TOOL_CHANGES_BETA, "</Note>", ""].join("\n"));
+    assert.deepEqual(result.warnings, []);
+    assert.deepEqual(result.withheld, []);
+    assert.deepEqual(result.models.map((model) => [model.id, model.compat]), [
+      ["claude-haiku-5-5", { supportsMidConvoToolChanges: true }],
+    ]);
+  });
+}
+
+test("a mid-conversation page that no longer names its models withholds tool changes", async (t) => {
+  const result = await catalogWithPage(t, ["The feature works on recent models.", "", TOOL_CHANGES_BETA, ""].join("\n"));
+  assert.deepEqual(result.warnings, []);
+  assert.deepEqual(result.withheld, ["mid-conversation tool changes: missing mid-conversation model availability"]);
+  assert.equal(result.models[0]?.compat, undefined);
+});
 
 test("an unavailable mid-conversation page withholds tool changes but keeps the catalog", async (t) => {
   const warning = await catalogWithout(t, async () => new Response("", { status: 503 }));

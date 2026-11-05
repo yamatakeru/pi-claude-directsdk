@@ -11,7 +11,13 @@ const MID_CONVERSATION = `${ROOT}/build-with-claude/mid-conversation-system-mess
 const LEVELS = ["low", "medium", "high", "xhigh", "max"] as const;
 
 type ChatModel = Model<Api>;
-export interface CatalogResult { models: ChatModel[]; warnings: string[] }
+export interface CatalogResult {
+  models: ChatModel[];
+  /** Models left out because their metadata is incomplete. */
+  warnings: string[];
+  /** Optional capabilities left off because their source could not confirm them. */
+  withheld: string[];
+}
 
 function plain(value: string): string {
   return value.replace(/<sup>.*?<\/sup>/g, "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1")
@@ -149,13 +155,15 @@ function thinkingMap(name: string, thinking: string, defaultEffort: string | und
  * Models Anthropic lists for mid-conversation tool changes. The page states
  * which models carry mid-conversation system messages, then makes tool changes
  * available on the same models. A page that no longer says so yields no
- * capability, never a guess.
+ * capability, never a guess. Both the current wording and the one before it
+ * are accepted.
  */
 function toolChangeModels(page: string): Set<string> {
   const text = page.replace(/\[([^\]]+)\]\([^)]*\)/g, "$1");
   // Model names carry version dots ("Claude Haiku 5.5"), so a sentence-ending
   // period is one that is not followed by a digit.
-  const availability = /This feature is available on ((?:[^.]|\.\d)+)\./.exec(text)?.[1];
+  const availability = /(?:Mid-conversation system messages are|This feature is) available on ((?:[^.]|\.\d)+)\./
+    .exec(text)?.[1];
   if (!availability) throw new Error("missing mid-conversation model availability");
   if (!/Mid-conversation tool changes.{0,80}are in beta on the same models/.test(text)) {
     throw new Error("missing mid-conversation tool change availability");
@@ -167,6 +175,7 @@ function toolChangeModels(page: string): Set<string> {
 
 export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSignal): Promise<CatalogResult> {
   const warnings: string[] = [];
+  const withheld: string[] = [];
   // Tool changes are optional: an unavailable, slow or changed page only
   // withholds them. Its own deadline leaves the refresh deadline to the rest.
   const optional = AbortSignal.any([signal, AbortSignal.timeout(5_000)]);
@@ -174,7 +183,7 @@ export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSig
     document(OVERVIEW, signal), document(PRICING, signal), document(EFFORT, signal),
     document(MID_CONVERSATION, optional).then(toolChangeModels).catch((error: unknown) => {
       signal.throwIfAborted();
-      warnings.push(`mid-conversation tool changes: ${error instanceof Error ? error.message : error}`);
+      withheld.push(`mid-conversation tool changes: ${error instanceof Error ? error.message : error}`);
       return new Set<string>();
     }),
   ]);
@@ -234,5 +243,9 @@ export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSig
     }));
   }
   const unique = new Map(models.map(model => [model.id, model]));
-  return { models: [...unique.values()].sort((a, b) => a.id.localeCompare(b.id)), warnings: warnings.sort() };
+  return {
+    models: [...unique.values()].sort((a, b) => a.id.localeCompare(b.id)),
+    warnings: warnings.sort(),
+    withheld,
+  };
 }

@@ -123,7 +123,7 @@ Cleanup closes the guard's connections, then closes the server only if it is sti
 
 Public Anthropic Markdown documents supply current model IDs, model pages, prices, effort levels, and cache lifetimes. Model pages must confirm the canonical Claude API ID, input modalities, context window, output limit, and thinking capability. The account picker supplies resolved aliases and effort constraints. Current public models can appear even before the CLI picker includes them; their labels state that account availability is unverified.
 
-Missing metadata excludes only the affected model with a warning. Shared-source failures reject refresh and remove the snapshot. Refresh uses a shared deadline and abort signal. Pi owns persistence and generation-checked publication.
+Missing metadata excludes only the affected model with a warning. Mid-conversation tool changes are optional: when the mid-conversation page cannot be read or no longer names its models, they stay off on every model, under a separate warning, and the catalog is kept. Shared-source failures reject refresh and remove the snapshot. Refresh uses a shared deadline and abort signal. Pi owns persistence and generation-checked publication.
 
 ### Request-time probes (`src/setup.ts`)
 
