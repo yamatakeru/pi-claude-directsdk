@@ -100,7 +100,9 @@ if [[ -n "$last_scan" ]]; then
   since="$(shift_date "${last_scan:0:10}" -1)"
 else
   # First run: no prior report, so one longer window and a raised report cap.
-  since="$(shift_date "$(date -u +%F)" "-$LOOKBACK_DAYS")"
+  # A first run that failed before its comment left its start in the state.
+  since="$(jq -r '.since // ""' <<<"$state")"
+  [[ -n "$since" ]] || since="$(shift_date "$(date -u +%F)" "-$LOOKBACK_DAYS")"
   (( FIRST_RUN_MAX_REPORTED > MAX_REPORTED )) && MAX_REPORTED="$FIRST_RUN_MAX_REPORTED"
 fi
 
@@ -245,8 +247,17 @@ if [[ "$DRY_RUN" == "1" ]]; then
 fi
 
 if [[ -z "$issue_number" ]]; then
-  gh issue create --repo "$TRACKER_REPO" --title "$STATE_TITLE" --body "$(state_body "$new_state")" >/dev/null
-  issue_number="$(find_tracker)"
+  # The search index lags behind a new issue, so take the number from the URL
+  # that `gh issue create` prints. The new state is written only after the
+  # comment is posted; until then the issue keeps this run's window, so a
+  # failure in between reports the same items again instead of losing them.
+  issue_url="$(gh issue create --repo "$TRACKER_REPO" --title "$STATE_TITLE" \
+    --body "$(state_body "$(jq -c --arg since "$since" '. + {since: $since}' <<<"$state")")")"
+  issue_number="${issue_url##*/}"
+  if [[ ! "$issue_number" =~ ^[0-9]+$ ]]; then
+    echo "unexpected URL from gh issue create: $issue_url" >&2
+    exit 1
+  fi
 fi
 
 gh issue comment "$issue_number" --repo "$TRACKER_REPO" --body-file "$TMP/comment.md" >/dev/null
