@@ -800,8 +800,11 @@ async function executeCall(
     }
     const exitCode = exitInfo.code;
     const calls = blocksOf(authoritative, "tool_use");
+    // A call cut off at max_tokens is dropped from the capture. Claude Code
+    // keeps it and answers it locally, which needs a second turn.
+    const cutCalls = used ? relay.capture.unparsed : [];
     const boundary =
-      calls.length > 0 && result?.subtype === "error_max_turns" && exitCode === 1;
+      (calls.length > 0 || cutCalls.length > 0) && result?.subtype === "error_max_turns" && exitCode === 1;
     if (
       !boundary &&
       !denialHandled &&
@@ -945,6 +948,12 @@ async function executeCall(
     const answered = output.content.some(
       (block) => (block.type === "text" && block.text.trim() !== "") || block.type === "toolCall",
     );
+    if (stop === "max_tokens" && !answered && cutCalls.length > 0) {
+      throw nativeError(
+        `${model.id} ran out of output tokens while writing the arguments of ${cutCalls.join(", ")}, ` +
+          "so the call was not run. Ask for smaller steps, or lower the thinking level, then retry.",
+      );
+    }
     if (stop === "max_tokens" && !answered) {
       throw nativeError(
         `${model.id} spent its whole output budget on thinking and returned no answer. ` +
