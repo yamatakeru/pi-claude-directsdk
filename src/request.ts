@@ -25,10 +25,9 @@ export const ENTRYPOINT_ENV = "PI_CLAUDE_NATIVE_ENTRYPOINT";
 /** Client label for `cc_entrypoint`. Unlabelled children fall into an SDK bucket. */
 export const DEFAULT_ENTRYPOINT = "pi-claude-native";
 
-const CONFLICTING_API_VARS = [
+const API_CREDENTIAL_VARS = [
   "ANTHROPIC_API_KEY",
   "ANTHROPIC_AUTH_TOKEN",
-  "ANTHROPIC_BASE_URL",
   "ANTHROPIC_FOUNDRY_API_KEY",
 ] as const;
 
@@ -92,18 +91,16 @@ export function replayCacheControl(
 }
 
 /**
- * Names of conflicting native auth/backend overrides present in the merged
- * environment. Subscription mode rejects them; explicit test mode
- * (`PI_CLAUDE_NATIVE_TEST_UPSTREAM=1`) allows them for loopback and gateway
- * fixtures. Values are never returned.
+ * Names of backend overrides present in the merged environment. Subscription
+ * mode rejects them, since dropping one would hide a deliberate redirect;
+ * explicit test mode (`PI_CLAUDE_NATIVE_TEST_UPSTREAM=1`) allows them for
+ * loopback and gateway fixtures. Values are never returned.
  */
 export function checkEnvConflicts(env: NodeJS.ProcessEnv): string[] {
   if (isTruthy(env[TEST_UPSTREAM_ENV])) {
     return [];
   }
-  const conflicts: string[] = CONFLICTING_API_VARS.filter(
-    (name) => (env[name] ?? "") !== "",
-  );
+  const conflicts: string[] = (env["ANTHROPIC_BASE_URL"] ?? "") !== "" ? ["ANTHROPIC_BASE_URL"] : [];
   for (const name of CONFLICTING_BACKEND_VARS) {
     if (isTruthy(env[name])) {
       conflicts.push(name);
@@ -396,6 +393,20 @@ function deleteEnvVar(env: NodeJS.ProcessEnv, name: string): void {
   }
 }
 
+/**
+ * Remove API credentials, which Pi's own providers may need but Claude Code
+ * would bill the API with, so it signs in with the subscription login. Test
+ * mode keeps them for loopback and gateway fixtures.
+ */
+export function dropApiCredentials(env: NodeJS.ProcessEnv): void {
+  if (isTruthy(env[TEST_UPSTREAM_ENV])) {
+    return;
+  }
+  for (const name of API_CREDENTIAL_VARS) {
+    deleteEnvVar(env, name);
+  }
+}
+
 /** Child environment: relay routing plus native isolation flags. */
 export function buildChildEnv(options: {
   baseEnv: NodeJS.ProcessEnv;
@@ -403,6 +414,7 @@ export function buildChildEnv(options: {
   body: Record<string, unknown>;
 }): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = { ...options.baseEnv };
+  dropApiCredentials(env);
   const config = env["PI_CLAUDE_NATIVE_CONFIG_DIR"];
   if (config) {
     env["CLAUDE_CONFIG_DIR"] = config;

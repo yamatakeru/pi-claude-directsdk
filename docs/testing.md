@@ -12,7 +12,7 @@ Run it on Node 22. The suite uses `node:test` and needs no subscription credenti
 
 - The admission relay forwards one upstream Messages request and rejects a second locally, including the tool-change beta and request rewrite.
 - The signed-thinking carrier restores only while the visible projection matches.
-- Conflicting auth and backend overrides are rejected without the test bypass.
+- Backend overrides are rejected and API credentials are left out of the Claude Code environment without the test bypass.
 - The usage-credit guard stops an overage turn, permits it with `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
 - The tool-change plan emits deferred additions, removals, and assistant-boundary injections only when model metadata supports them.
 

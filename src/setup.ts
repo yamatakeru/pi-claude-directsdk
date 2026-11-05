@@ -7,6 +7,7 @@ import { accessSync, constants } from "node:fs";
 import { delimiter, join } from "node:path";
 import { LOGIN_HINT, INSTALL_HINT } from "./errors.js";
 import { parseCliVersion, cliVersionSupported } from "./models.js";
+import { dropApiCredentials } from "./request.js";
 
 export interface SetupStatus {
   available: boolean;
@@ -74,6 +75,7 @@ function findOnPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
 /** Child environment for setup probes. Never forwards the override variable itself. */
 export function setupChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const child: NodeJS.ProcessEnv = { ...env };
+  dropApiCredentials(child);
   const config = child["PI_CLAUDE_NATIVE_CONFIG_DIR"];
   delete child["PI_CLAUDE_NATIVE_CONFIG_DIR"];
   if (config) {
