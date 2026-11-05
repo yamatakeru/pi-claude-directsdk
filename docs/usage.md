@@ -84,7 +84,7 @@ Completed and failed turns carry a `pi-claude-native/rate-limit` diagnostic when
 
 ## Tool changes
 
-On models whose metadata supports mid-conversation tool changes, Claude Native keeps later system messages instead of collapsing them. It sends the initial tools, a deferred placeholder, later tool declarations with `defer_loading: true`, and `tool_addition`/`tool_removal` blocks at assistant boundaries. The admitted request adds the `mid-conversation-tool-changes-2026-07-01` beta value.
+On models whose metadata supports mid-conversation tool changes, Claude Native keeps later system messages instead of collapsing them. It sends the initial tools and a deferred placeholder as a tool list that never changes. Later tools travel by value in `tool_addition` blocks at assistant boundaries, so a tool redefined under the same name also keeps the cache, and removed tools travel as `tool_removal`. The admitted request adds the `inline-tools-2026-09-15` beta value.
 
 This lets a conversation remove a tool after using it without failing replay. Pi still validates the response against the current tool inventory, so it never executes a removed tool. Unsupported models keep the collapsed request shape.
 

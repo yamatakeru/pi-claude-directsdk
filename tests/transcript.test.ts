@@ -46,7 +46,7 @@ function conversation(): Message[] {
   ];
 }
 
-test("gates the native tool-change plan on model metadata and tool redefinitions", () => {
+test("gates the native tool-change plan on model metadata and initial tools", () => {
   assert.equal(supportsNativeToolChanges({ supportsMidConvoToolChanges: true }), true);
   assert.equal(supportsNativeToolChanges({ supportsMidConvoToolChanges: false }), false);
   assert.equal(supportsNativeToolChanges(undefined), false);
@@ -62,21 +62,36 @@ test("gates the native tool-change plan on model metadata and tool redefinitions
     ),
     undefined,
   );
-  assert.equal(
-    prepareNativeTranscript(
-      [
-        ...conversation(),
-        {
-          role: "system",
-          content: "",
-          toolsAdded: [{ ...alpha, description: "changed" }],
-          timestamp: 6,
-        },
-      ],
-      true,
-    ),
-    undefined,
-  );
+});
+
+test("a redefined tool is defined again by value and keeps the tool list", () => {
+  const plan = prepareNativeTranscript([
+    { role: "system", content: "base", toolsAdded: [alpha], timestamp: 0 },
+    { role: "user", content: "first", timestamp: 1 },
+    directAssistant("one"),
+    // Pi records a changed definition as a removal followed by an addition.
+    {
+      role: "system",
+      content: "",
+      toolsRemoved: [{ name: "alpha" }],
+      toolsAdded: [{ ...alpha, description: "changed" }],
+      timestamp: 2,
+    },
+    { role: "user", content: "second", timestamp: 3 },
+  ], true);
+  assert.ok(plan);
+  assert.deepEqual(plan.requestTools.map((tool) => tool["name"]), ["mcp__pi__alpha", "__pi_deferred_placeholder__"]);
+  assert.equal(plan.requestTools[0]?.["description"], "alpha");
+  assert.deepEqual(plan.systemInjections, [{
+    beforeAssistant: null,
+    content: [{
+      type: "tool_addition",
+      tool: {
+        type: "tool_definition",
+        definition: { name: "mcp__pi__alpha", description: "changed", input_schema: { type: "object", properties: {} } },
+      },
+    }],
+  }]);
 });
 
 test("accepts historical calls to tools declared earlier in the transcript", () => {

@@ -177,6 +177,22 @@ Three approved paid requests went through the provider path with `claude-haiku-5
 
 The added tool was declared with `defer_loading` and activated by `tool_addition`; the model called it through the inert MCP server. Each request admitted one upstream request. Opus 5.5 and Sonnet 5.5 produced the same request shape in the loopback capture, but only Haiku 5.5 was measured on the subscription route.
 
+### Tools defined by value (`inline-tools-2026-09-15`)
+
+Since #56, later tools are defined by value in `tool_addition` blocks instead of being declared up front with `defer_loading`, and the admitted request carries the `inline-tools-2026-09-15` beta value. The tool list is the initial tools plus the placeholder for the whole conversation, so a tool redefined under the same name no longer falls back to the current tool list.
+
+A loopback capture with Claude Code 2.1.318 showed that the CLI sends `mid-conversation-tool-changes-2026-07-01` on its own and forwards the request body unchanged; the relay appends `inline-tools-2026-09-15`.
+
+Three approved paid requests ran on 2026-11-05 with `claude-haiku-5-5` and Claude Code 2.1.318, through `streamClaudeNative`, first on this change and then with the same transcript on `main`. The initial tools were `alpha` and `gamma`. Before request 2, `alpha` was redefined with a new required `mode` field and `beta` was added; before request 3, `gamma` was removed.
+
+| Request | What happened | This change: cache read / write | `main`: cache read / write |
+|---|---|---:|---:|
+| 1 | Initial tools | 0 / 623 | 623 / 0 |
+| 2 | `alpha` redefined, `beta` added; the model called `alpha` with `mode` | 623 / 344 | 0 / 984 |
+| 3 | Tool result returned, `gamma` removed; final answer | 967 / 546 | 0 / 996 |
+
+The model's call used the new required field, so the redefinition reached it. On `main`, request 1 read the prefix the first run wrote, and requests 2 and 3 each missed the whole cache. With this change, each request read everything the previous one wrote. The prompts were small, so the token counts are small; the read/miss pattern is the result.
+
 ### Interactive sessions after the trimmed-result fix
 
 At commit `1fa1c48`, two fresh interactive Pi 1.3.0 sessions ran with the earlier mid-conversation opt-in enabled and Claude Code 2.1.303, driven through the Herdr terminal multiplexer. Across 31 requests, `nativeContext` reported no skipped restoration and `midConversation` reported no fallback. The first user turn after a tool loop read 99.4% from cache after 12 Haiku 5.5 tool calls, and 99.0% after 10 Sonnet 5.5 tool calls.

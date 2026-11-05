@@ -14,7 +14,7 @@ Run it on Node 22. The suite uses `node:test` and needs no subscription credenti
 - The signed-thinking carrier restores only while the visible projection matches.
 - Conflicting auth and backend overrides are rejected without the test bypass.
 - The usage-credit guard stops an overage turn, permits it with `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
-- The tool-change plan emits deferred additions, removals, and assistant-boundary injections only when model metadata supports them.
+- The tool-change plan emits by-value additions (including redefinitions), removals, and assistant-boundary injections only when model metadata supports them.
 
 The tests use a temporary fake executable in the stream tests. They do not prove real Claude generation, native cache reuse, or upstream acceptance of the beta fields. The installed-Pi harness remains the end-to-end gate.
 

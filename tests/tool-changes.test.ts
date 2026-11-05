@@ -171,7 +171,6 @@ test("streams a removed tool without rewriting the initial request prefix", asyn
     [
       ["mcp__pi__alpha", false],
       ["__pi_deferred_placeholder__", true],
-      ["mcp__pi__beta", true],
     ],
   );
   // Claude Code adds its own breakpoints; with the replay anchor, a tool
@@ -188,7 +187,13 @@ test("streams a removed tool without rewriting the initial request prefix", asyn
   ]);
   assert.deepEqual(messages[1]?.content, [
     { type: "text", text: "beta is available" },
-    { type: "tool_addition", tool: { type: "tool_reference", name: "mcp__pi__beta" } },
+    {
+      type: "tool_addition",
+      tool: {
+        type: "tool_definition",
+        definition: { name: "mcp__pi__beta", description: "beta", input_schema: { type: "object", properties: {} } },
+      },
+    },
   ]);
   assert.deepEqual(messages[4]?.content, [
     { type: "text", text: "alpha is gone" },
