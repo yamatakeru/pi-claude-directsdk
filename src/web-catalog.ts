@@ -170,6 +170,9 @@ function toolChangeModels(page: string): Set<string> {
   }
   const names = availability.split(/,\s*(?:and\s+)?|\s+and\s+/).map(name => name.trim()).filter(Boolean);
   if (names.length === 0) throw new Error("empty mid-conversation model availability");
+  // A list that is not all model names ("all models") is a changed page.
+  const unknown = names.find(name => !/^Claude [A-Z][a-z]+ \d+(?:\.\d+)?$/.test(name));
+  if (unknown) throw new Error(`unrecognized model in mid-conversation availability: ${unknown}`);
   return new Set(names);
 }
 
