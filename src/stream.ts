@@ -726,6 +726,23 @@ async function executeCall(
           child.exitInfo?.signal ? `/${child.exitInfo.signal}` : ""
         }, stderr: ${child.stderrTail(500) || "<empty>"})`
       : "";
+    // A failed upstream response explains the turn even when the CLI then ends
+    // without a result line, as it can at a usage limit, so report it first.
+    if (used && (relay.status !== 200 || !relay.capture.complete || !relay.capture.message)) {
+      const rejection = usageCreditsRejectionError(
+        [relay.errorText(), nativeErrorText].filter(Boolean).join("\n"),
+      );
+      if (rejection) throw rejection;
+      throw upstreamError(
+        `first upstream attempt: status ${relay.status ?? "unknown"}, ` +
+          `capture ${relay.capture.complete ? "complete" : "incomplete"}` +
+          (relay.failure ? `, relay failure ${formatRelayFailure(relay.failure)}` : "") +
+          `, native retries denied: ${relay.denied}` +
+          (relay.errorText() ? `, upstream said: ${relay.errorText().slice(0, 500)}` : "") +
+          (nativeErrorText ? `: ${nativeErrorText}` : "") +
+          (results.length !== 1 ? `; native result lines: ${results.length}${childDetail}` : ""),
+      );
+    }
     if (results.length !== 1 || !soleResult) {
       throw incompleteError(
         `Expected exactly one native result, saw ${results.length}${childDetail}`,
@@ -736,21 +753,7 @@ async function executeCall(
       ...(typeof result["result"] === "string" && result["result"] ? [result["result"]] : []),
       ...(Array.isArray(result["errors"]) ? result["errors"].filter((value): value is string => typeof value === "string") : []),
     ].join("; ");
-    if (used) {
-      if (relay.status !== 200 || !relay.capture.complete || !relay.capture.message) {
-        const rejection = usageCreditsRejectionError(
-          [relay.errorText(), nativeErrorText].filter(Boolean).join("\n"),
-        );
-        if (rejection) throw rejection;
-        throw upstreamError(
-          `first upstream attempt: status ${relay.status ?? "unknown"}, ` +
-            `capture ${relay.capture.complete ? "complete" : "incomplete"}` +
-            (relay.failure ? `, relay failure ${formatRelayFailure(relay.failure)}` : "") +
-            `, native retries denied: ${relay.denied}` +
-            (relay.errorText() ? `, upstream said: ${relay.errorText().slice(0, 500)}` : "") +
-            (nativeErrorText ? `: ${nativeErrorText}` : ""),
-        );
-      }
+    if (used && relay.capture.message) {
       authoritative = relay.capture.message;
       stopped = true;
     } else {
