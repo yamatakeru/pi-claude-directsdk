@@ -4,18 +4,18 @@ Pi shows the entries newer than the last version it saw on the first fresh launc
 
 ## [0.7.0] - 2026-11-06
 
-Verified with Pi 1.5.0 and Claude Code 2.1.318. An `ANTHROPIC_API_KEY` set for Pi's own Anthropic provider no longer blocks Claude Native, and mid-conversation tool changes work again and keep the cache when a tool is redefined.
+Checked with Pi 1.5.0 and Claude Code 2.1.318 (startup, a fresh request, warm cache and replayed thinking). An `ANTHROPIC_API_KEY` set for Pi's own Anthropic provider no longer blocks Claude Native, and on models that support them, mid-conversation tool changes work again and keep the cache when a tool is redefined.
 
 ### Changed
 
 - API credentials in Pi's environment (`ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_FOUNDRY_API_KEY`) are left out of Claude Code instead of refusing every turn, so Claude Code always signs in with your subscription ([#55](https://github.com/yamatakeru/pi-claude-native/issues/55), [#65](https://github.com/yamatakeru/pi-claude-native/pull/65)). Backend overrides such as `ANTHROPIC_BASE_URL` are still refused.
-- A tool redefined under the same name mid-conversation no longer makes the next request miss the whole cache. Later tools are now sent by value, as Pi's own Anthropic provider does ([#56](https://github.com/yamatakeru/pi-claude-native/issues/56), [#66](https://github.com/yamatakeru/pi-claude-native/pull/66)).
+- On models that support mid-conversation tool changes, a tool redefined under the same name no longer makes the next request miss the whole cache. Later tools are now sent by value, as Pi's own Anthropic provider does ([#56](https://github.com/yamatakeru/pi-claude-native/issues/56), [#66](https://github.com/yamatakeru/pi-claude-native/pull/66)).
 
 ### Fixed
 
 - Mid-conversation tool changes were turned off, with a warning on every catalog refresh, after Anthropic reworded the page that lists the supported models ([#51](https://github.com/yamatakeru/pi-claude-native/issues/51), [#59](https://github.com/yamatakeru/pi-claude-native/pull/59)).
-- A reply cut off at the output limit inside a tool call ends the turn as `length` instead of failing it ([#52](https://github.com/yamatakeru/pi-claude-native/issues/52), [#60](https://github.com/yamatakeru/pi-claude-native/pull/60)).
-- When Claude Code ends without a result, for example at a usage limit, the error shows Anthropic's reason instead of "Expected exactly one native result" ([#54](https://github.com/yamatakeru/pi-claude-native/issues/54), [#62](https://github.com/yamatakeru/pi-claude-native/pull/62)).
+- A reply cut off at the output limit inside a tool call no longer fails with a JSON error. The turn ends as `length` when the reply already has text or another call; otherwise the error names the tool that was cut off ([#52](https://github.com/yamatakeru/pi-claude-native/issues/52), [#60](https://github.com/yamatakeru/pi-claude-native/pull/60)).
+- When a failed upstream request makes Claude Code end without a result, for example at a usage limit, the error shows Anthropic's reason instead of "Expected exactly one native result" ([#54](https://github.com/yamatakeru/pi-claude-native/issues/54), [#62](https://github.com/yamatakeru/pi-claude-native/pull/62)).
 
 ## [0.6.0] - 2026-11-02
 
