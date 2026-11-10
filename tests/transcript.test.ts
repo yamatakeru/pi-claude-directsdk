@@ -117,13 +117,12 @@ test("accepts historical calls to tools declared earlier in the transcript", () 
     },
     { role: "user", content: "continue", timestamp: 3 },
   ];
-  assert.throws(
-    () => prepareHistory(history, new Set(["beta"])),
-    /Tool call outside the current inventory/,
-  );
+  assert.deepEqual(prepareHistory(history, new Set(["beta"])).toolCallsAsText, ["alpha"]);
   const declared = new Set(getDeclaredTools(conversation()).map((tool) => tool.name));
   assert.deepEqual([...declared], ["alpha", "beta"]);
-  assert.doesNotThrow(() => prepareHistory(history, declared));
+  const replayed = prepareHistory(history, declared);
+  assert.deepEqual(replayed.toolCallsAsText, []);
+  assert.equal(replayed.frames[1]?.message.content[0]?.type, "tool_use");
 });
 
 function directAssistant(text: string): Message {
