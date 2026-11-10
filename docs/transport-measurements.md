@@ -128,6 +128,17 @@ Limits:
 - After a tool loop that contains thinking, the next user turn can still miss entries written after the first thinking block. That is a separate API-side behaviour. The relay now ports the Hermes turn-start marker ([hermes-official-plugins#36](https://github.com/NousResearch/hermes-official-plugins/issues/36), `_keep_turn_mark`), where the next turn's read rose from 54% to 94% in Hermes' live run. A loopback capture with Claude Code 2.1.316 after a 14-round thinking loop showed the marker on the opening frame within four breakpoints; this transport has no paid measurement of it yet. Until replayed thinking reached the request (see below), this miss did not apply here.
 - A later CLI that changes these placements disables the affected step and shows up in `nativeContext`, not as a failed call.
 
+#### Fable batching reminder
+
+On Claude Code 2.1.322, the same kind of loopback capture ran through the provider and a real CLI, with no upstream contact. It covered an opening request, a tool-result step and a later user turn on Fable 5.1, Fable 5.2 and Opus 5.5. On Fable 5.1 only, the tool-result step's trailing system message held the date line, with the CLI's marker, followed by a batching reminder (`tengu_toasty_thimble`). Before the change for [#41](https://github.com/yamatakeru/pi-claude-native/issues/41), the environment message lacked the date on that step and had it on the user turn, so the user turn did not replay the step's prefix. After it, every request's prefix through its message breakpoint was replayed unchanged on all three models.
+
+The CLI enables the reminder by default only for models with the `fable_5_1_prompt_bundle` capability, which Fable 5.2 lacks. Anthropic can still enable it, and a second reminder (`tengu_gentle_parasol`), for any model through client data. With both forced on Fable 5.2 through their environment variables (`CLAUDE_CODE_TOASTY_THIMBLE`, `CLAUDE_CODE_GENTLE_PARASOL`), the CLI joined them into one block after the date, and the result matched Fable 5.1 before and after the change.
+
+Two options were considered:
+
+- **Move only the leading date block (adopted, as in Hermes).** It extends the existing step to the layout observed, and leaves the opening request and every other route as the CLI builds them. Hermes merged the same change ([hermes-official-plugins#253](https://github.com/NousResearch/hermes-official-plugins/pull/253)).
+- **Move the date out of the environment message instead (deferred).** First proposed in [hermes-official-plugins#243](https://github.com/NousResearch/hermes-official-plugins/issues/243), where Hermes did not adopt it and gave no reason. It would also keep the prefix across date changes and any later trailing layout, but changes the opening request and departs from Hermes; it is tracked in [#69](https://github.com/yamatakeru/pi-claude-native/issues/69).
+
 ### Artifact scratchpad line under the custom label
 
 A loopback server recorded `/v1/messages` bodies from Claude Code 2.1.312 and 2.1.316 on macOS, run with this extension's child arguments and environment. No paid requests were made.
