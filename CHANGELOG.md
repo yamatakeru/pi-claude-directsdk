@@ -2,6 +2,12 @@
 
 Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
+## [0.7.1] - 2026-11-10
+
+### Fixed
+
+- On Fable 5.1, switching between a tool-result step and a new user turn no longer writes the whole conversation to the prompt cache again. On tool-result steps Claude Code sends a batching reminder after the date line, and the date was then left out of the start of the conversation. The same applies on any model where Anthropic turns that reminder on ([#41](https://github.com/yamatakeru/pi-claude-native/issues/41), [#70](https://github.com/yamatakeru/pi-claude-native/pull/70)).
+
 ## [0.7.0] - 2026-11-06
 
 Checked with Pi 1.5.0 and Claude Code 2.1.318 (startup, a fresh request, warm cache and replayed thinking). An `ANTHROPIC_API_KEY` set for Pi's own Anthropic provider no longer blocks Claude Native, and on models that support them, mid-conversation tool changes work again and keep the cache when a tool is redefined.
