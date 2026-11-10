@@ -56,12 +56,9 @@ export interface ReplayOutput {
 function asTextResult(heading: string, blocks: NativeContentBlock[]): NativeContentBlock[] {
   const result: NativeContentBlock[] = [{ type: "text", text: heading }];
   for (const block of blocks) {
+    if (block.type === "text" && !block.text) continue;
     const last = result[result.length - 1];
-    if (block.type !== "text") {
-      result.push(block);
-    } else if (!block.text) {
-      continue;
-    } else if (last?.type === "text") {
+    if (block.type === "text" && last?.type === "text") {
       result[result.length - 1] = { ...last, text: `${last.text}\n${block.text}` };
     } else {
       result.push(block);
@@ -253,7 +250,7 @@ export function prepareHistory(
     }
   };
   // Pi tool-call ID to tool name, for calls replayed as text.
-  const textToolCalls = new Map<string, string>();
+  const textToolNames = new Map<string, string>();
   const toolCallsAsText: string[] = [];
   // Results replayed as text wait until the native results of the same turn
   // are in, because native tool results must lead the user message.
@@ -297,7 +294,7 @@ export function prepareHistory(
       case "assistant": {
         // Results answer the calls of the turn just before them, so a reused
         // ID in a later turn never inherits an earlier text replay.
-        textToolCalls.clear();
+        textToolNames.clear();
         const carrier = readCarrier(message);
         if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
           for (const native of carrier.messages) {
@@ -319,7 +316,6 @@ export function prepareHistory(
         // Without a matching carrier, preserve thinking as ordinary text.
         // Foreign or stale signatures must never become native thinking.
         const blocks: NativeContentBlock[] = [];
-        let hasTextToolCall = false;
         for (const block of message.content) {
           if (block.type === "text") {
             if (block.text) {
@@ -331,9 +327,8 @@ export function prepareHistory(
             }
           } else if (block.type === "toolCall") {
             if (allowedToolNames && !allowedToolNames.has(block.name)) {
-              textToolCalls.set(block.id, block.name);
+              textToolNames.set(block.id, block.name);
               toolCallsAsText.push(block.name);
-              hasTextToolCall = true;
               blocks.push({
                 type: "text",
                 text: `[Tool call: ${block.name}, id ${block.id}] ${JSON.stringify(block.arguments ?? {})}`,
@@ -363,7 +358,7 @@ export function prepareHistory(
           type: "assistant",
           message: {
             role: "assistant",
-            content: hasTextToolCall ? toolUsesLast(blocks) : blocks,
+            content: textToolNames.size > 0 ? toolUsesLast(blocks) : blocks,
           },
         });
         break;
@@ -381,7 +376,7 @@ export function prepareHistory(
             );
           }
         }
-        const textToolName = textToolCalls.get(message.toolCallId);
+        const textToolName = textToolNames.get(message.toolCallId);
         if (textToolName !== undefined) {
           const label = message.isError ? "Tool error" : "Tool result";
           textResults.push(...asTextResult(`[${label}: ${textToolName}, id ${message.toolCallId}]`, blocks));
