@@ -266,10 +266,12 @@ function restoreDateLine(messages: Message[]): boolean {
   const env = messages.slice(0, -1).find((message) => message.role === "system");
   if (!last || last.role !== "system" || !env) return false;
   const content = last.content;
+  // On Fable the date leads the trailing message, followed by a per-step
+  // reminder on tool-result steps (#41); only the date moves.
   const tail: unknown =
     typeof content === "string"
       ? { type: "text", text: content }
-      : Array.isArray(content) && content.length === 1
+      : Array.isArray(content)
         ? content[0]
         : undefined;
   if (!isRecord(tail) || tail["type"] !== "text" || !DATE_LINE.test(tail["text"] as string)) {
@@ -291,9 +293,11 @@ function restoreDateLine(messages: Message[]): boolean {
   } else {
     target["text"] = `${target["text"] as string}\n\n${line}`;
   }
-  const mark = tail["cache_control"] ?? last["cache_control"];
-  messages.pop();
-  const previous = messages[messages.length - 1]?.content;
+  const whole = !Array.isArray(content) || content.length === 1;
+  const mark = tail["cache_control"] ?? (whole ? last["cache_control"] : undefined);
+  if (whole) messages.pop();
+  else content.shift();
+  const previous = messages[messages.length - (whole ? 1 : 2)]?.content;
   if (mark !== undefined && Array.isArray(previous) && previous.length > 0) {
     const block = previous[previous.length - 1] as Block;
     if (!("cache_control" in block)) block["cache_control"] = mark;

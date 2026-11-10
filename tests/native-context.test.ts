@@ -77,6 +77,90 @@ test("#1 later user turn: date line returns, reminder is dropped, breakpoint fol
   ]);
 });
 
+// Claude Code 2.1.322 on Fable 5.1, replayed into a fresh child: a
+// tool-result step sends a batching reminder after the date, in the same
+// trailing message that carries the CLI's marker (#41).
+const BATCHING = "First privately list what you need next.";
+const fableLoop = [
+  { role: "user", content: [{ type: "text", text: "read", cache_control: CC }] },
+  { role: "system", content: "env" },
+  { role: "assistant", content: [{ type: "tool_use", id: "t1", name: "mcp__pi__read", input: {} }] },
+];
+const readResult = { type: "tool_result", tool_use_id: "t1", content: "hello" };
+
+test("#41 Fable tool-result step: the date leaves the reminder and returns", () => {
+  const toolStep = run(
+    {
+      messages: [
+        ...fableLoop,
+        { role: "user", content: [{ ...readResult, content: `hello${REMINDER}` }] },
+        {
+          role: "system",
+          content: [
+            { type: "text", text: DATE, cache_control: CC },
+            { type: "text", text: BATCHING },
+          ],
+        },
+      ],
+    },
+    [readResult],
+  );
+  assert.deepEqual(toolStep.result.report, {
+    applied: ["toolResultRestored", "dateLineRestored"],
+    skipped: [],
+  });
+  assert.deepEqual((toolStep.body["messages"] as unknown[]).slice(1), [
+    { role: "system", content: `env\n\n${DATE}` },
+    fableLoop[2],
+    { role: "user", content: [{ ...readResult, cache_control: CC }] },
+    { role: "system", content: [{ type: "text", text: BATCHING }] },
+  ]);
+
+  // The next user turn sends the date alone; both requests now share messages[1].
+  const userTurn = run(
+    {
+      messages: [
+        ...fableLoop,
+        { role: "user", content: [readResult] },
+        { role: "assistant", content: [{ type: "text", text: "hi" }] },
+        { role: "user", content: [{ type: "text", text: REMINDER }, { type: "text", text: "next" }] },
+        { role: "system", content: [{ type: "text", text: DATE, cache_control: CC }] },
+      ],
+    },
+    [{ type: "text", text: "next" }],
+  );
+  assert.deepEqual(userTurn.result.report.applied, ["dateLineRestored", "reminderDropped"]);
+  assert.deepEqual((userTurn.body["messages"] as unknown[])[1], (toolStep.body["messages"] as unknown[])[1]);
+});
+
+test("#41 a trailing message that does not lead with the date stays as built", () => {
+  const { result, body } = run(
+    {
+      messages: [
+        ...fableLoop,
+        { role: "user", content: [readResult] },
+        {
+          role: "system",
+          content: [
+            { type: "text", text: BATCHING },
+            { type: "text", text: DATE, cache_control: CC },
+          ],
+        },
+      ],
+    },
+    [readResult],
+  );
+  assert.deepEqual(result.report.applied, ["breakpointPinned"]);
+  assert.deepEqual((body["messages"] as unknown[])[1], { role: "system", content: "env" });
+  assert.deepEqual((body["messages"] as unknown[])[4], {
+    role: "system",
+    content: [
+      { type: "text", text: BATCHING },
+      { type: "text", text: DATE },
+    ],
+  });
+});
+
 const toolTurn = (results: unknown[]) => ({
   messages: [
     { role: "user", content: [{ type: "text", text: "run", cache_control: CC }] },

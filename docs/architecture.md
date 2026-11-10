@@ -71,7 +71,7 @@ Before forwarding, the relay's payload hook (`src/native-rewrite.ts`) parses the
 - Tool results: text the CLI appended to the queried tool results is removed, only when the ordered tool-use IDs anchor the whole frame. The CLI also trims surrounding whitespace from the newest tool result before appending, so Pi's original text is restored there too.
 - Later user turns: plain text the CLI placed before the queried frame is dropped, only when the frame occurs exactly once. A continuous native session carries this context once; per-call replay would otherwise repeat it on every call and replay it nowhere.
 - Opening request: that text is moved after the frame instead, so the opening turn is cached once.
-- The trailing date line returns to the end of the environment message, where the opening request had it.
+- The trailing date line returns to the end of the environment message, where the opening request had it. On Fable the date leads a trailing message that also holds a per-step reminder on tool-result steps; only the date moves, and the reminder stays trailing.
 - Message breakpoints after the replay-stable span move onto its last cacheable block.
 - After a tool loop longer than the cache lookback (20 blocks), the block before the open turn's first thinking keeps a marker of its own. Once a later user message carries more than tool results, the API stops matching cache entries written after that thinking, so without this marker the next turn would read only system and tools. The marker is added only within the four-breakpoint limit; at the limit a CLI marker between it and the recurring breakpoint moves there instead.
 
