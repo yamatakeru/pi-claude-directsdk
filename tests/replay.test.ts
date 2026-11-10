@@ -131,10 +131,10 @@ test("replays tool calls a request does not declare as text", () => {
     [{ type: "text", text: "go" }],
     [
       { type: "text", text: "checking" },
-      { type: "text", text: '[Tool call: read] {"path":"a.ts"}' },
+      { type: "text", text: '[Tool call: read, id call_1] {"path":"a.ts"}' },
     ],
     [
-      { type: "text", text: "[Tool result: read]\ncontents" },
+      { type: "text", text: "[Tool result: read, id call_1]\ncontents" },
       { type: "text", text: "advise" },
     ],
   ]);
@@ -157,15 +157,48 @@ test("keeps declared tool calls structured next to calls replayed as text", () =
   // the assistant message, so the text replay moves around them.
   assert.deepEqual(restored.frames[1]?.message.content, [
     { type: "text", text: "checking" },
-    { type: "text", text: "[Tool call: gone] {}" },
+    { type: "text", text: "[Tool call: gone, id call_2] {}" },
     { type: "tool_use", id: "call_1", name: "mcp__pi__read", input: {} },
   ]);
   assert.deepEqual(restored.frames[2]?.message.content, [
     { type: "tool_result", tool_use_id: "call_1", content: "contents" },
-    { type: "text", text: "[Tool error: gone]\nfailed" },
+    { type: "text", text: "[Tool error: gone, id call_2]\nfailed" },
     { type: "text", text: "continue" },
   ]);
   assert.deepEqual(restored.toolCallsAsText, ["gone"]);
+});
+
+test("matches results to the calls of their own turn when an ID is reused", () => {
+  const later = toolTurn([{ id: "call_1", name: "read" }]);
+  later.timestamp = 5;
+  const restored = prepareHistory([
+    { role: "user", content: "go", timestamp: 0 },
+    toolTurn([{ id: "call_1", name: "gone" }]),
+    toolResult("call_1", "gone", [{ type: "text", text: "old" }]),
+    later,
+    toolResult("call_1", "read", [{ type: "text", text: "new" }]),
+  ], new Set(["read"]));
+
+  assert.deepEqual(restored.frames[2]?.message.content, [
+    { type: "text", text: "[Tool result: gone, id call_1]\nold" },
+  ]);
+  assert.deepEqual(restored.frames[4]?.message.content, [
+    { type: "tool_result", tool_use_id: "call_1", content: "new" },
+  ]);
+});
+
+test("names each call replayed as text so same-name results stay apart", () => {
+  const restored = prepareHistory([
+    { role: "user", content: "go", timestamp: 0 },
+    toolTurn([{ id: "call_1", name: "gone" }, { id: "call_2", name: "gone" }]),
+    toolResult("call_2", "gone", [{ type: "text", text: "second" }]),
+    toolResult("call_1", "gone", [{ type: "text", text: "first" }]),
+  ], new Set());
+
+  assert.deepEqual(restored.frames[2]?.message.content, [
+    { type: "text", text: "[Tool result: gone, id call_2]\nsecond" },
+    { type: "text", text: "[Tool result: gone, id call_1]\nfirst" },
+  ]);
 });
 
 test("keeps the block order of a turn without calls replayed as text", () => {
@@ -216,10 +249,10 @@ test("replays an edited native turn without its signature when its calls are und
   assert.deepEqual(restored.frames[1]?.message.content, [
     { type: "text", text: "private" },
     { type: "text", text: "checking" },
-    { type: "text", text: "[Tool call: read] {}" },
+    { type: "text", text: "[Tool call: read, id call_1] {}" },
   ]);
   assert.deepEqual(restored.frames[2]?.message.content, [
-    { type: "text", text: "[Tool result: read]\ncontents" },
+    { type: "text", text: "[Tool result: read, id call_1]\ncontents" },
   ]);
 });
 
@@ -235,7 +268,7 @@ test("keeps images and drops empty text in a tool result replayed as text", () =
   ], new Set(["read"]));
 
   assert.deepEqual(restored.frames[2]?.message.content, [
-    { type: "text", text: "[Tool result: screenshot]" },
+    { type: "text", text: "[Tool result: screenshot, id call_1]" },
     { type: "image", source: { type: "base64", media_type: "image/png", data: "aW1n" } },
     { type: "text", text: "done" },
   ]);

@@ -295,6 +295,9 @@ export function prepareHistory(
         break;
       }
       case "assistant": {
+        // Results answer the calls of the turn just before them, so a reused
+        // ID in a later turn never inherits an earlier text replay.
+        textToolCalls.clear();
         const carrier = readCarrier(message);
         if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
           for (const native of carrier.messages) {
@@ -333,7 +336,7 @@ export function prepareHistory(
               hasTextToolCall = true;
               blocks.push({
                 type: "text",
-                text: `[Tool call: ${block.name}] ${JSON.stringify(block.arguments ?? {})}`,
+                text: `[Tool call: ${block.name}, id ${block.id}] ${JSON.stringify(block.arguments ?? {})}`,
               });
               continue;
             }
@@ -381,7 +384,7 @@ export function prepareHistory(
         const textToolName = textToolCalls.get(message.toolCallId);
         if (textToolName !== undefined) {
           const label = message.isError ? "Tool error" : "Tool result";
-          textResults.push(...asTextResult(`[${label}: ${textToolName}]`, blocks));
+          textResults.push(...asTextResult(`[${label}: ${textToolName}, id ${message.toolCallId}]`, blocks));
           break;
         }
         pushUserBlocks([
