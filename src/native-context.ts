@@ -261,13 +261,16 @@ function restoreQueriedTurn(
   return "restored";
 }
 
+/**
+ * Return the trailing date line to the end of the environment message. On
+ * Fable it leads a trailing message that also holds a per-step reminder on
+ * tool-result steps (#41); only the date moves.
+ */
 function restoreDateLine(messages: Message[]): boolean {
   const last = messages[messages.length - 1];
   const env = messages.slice(0, -1).find((message) => message.role === "system");
   if (!last || last.role !== "system" || !env) return false;
   const content = last.content;
-  // On Fable the date leads the trailing message, followed by a per-step
-  // reminder on tool-result steps (#41); only the date moves.
   const tail: unknown =
     typeof content === "string"
       ? { type: "text", text: content }
@@ -295,9 +298,9 @@ function restoreDateLine(messages: Message[]): boolean {
   }
   const whole = !Array.isArray(content) || content.length === 1;
   const mark = tail["cache_control"] ?? (whole ? last["cache_control"] : undefined);
+  const previous = messages[messages.length - 2]?.content;
   if (whole) messages.pop();
   else content.shift();
-  const previous = messages[messages.length - (whole ? 1 : 2)]?.content;
   if (mark !== undefined && Array.isArray(previous) && previous.length > 0) {
     const block = previous[previous.length - 1] as Block;
     if (!("cache_control" in block)) block["cache_control"] = mark;
