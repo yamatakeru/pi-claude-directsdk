@@ -209,10 +209,11 @@ function toNativeImage(data: string, mimeType: string): NativeContentBlock {
 /**
  * Replay Pi messages (system messages already removed) into native frames.
  *
- * @param allowedToolNames tools the request declares. A historical call to
- *   any other tool, outside a matching carrier, is replayed as text together
- *   with its result, so no undeclared `tool_use` reaches the API. Fresh calls
- *   are validated separately against the current inventory.
+ * @param allowedToolNames tools the request declares. In a turn without a
+ *   matching carrier, a call to any other tool is replayed as text together
+ *   with its result instead of as a `tool_use`. A matching carrier replays its
+ *   calls unchecked. Fresh calls are validated separately against the current
+ *   inventory.
  */
 export function prepareHistory(
   messages: Message[],
@@ -315,6 +316,7 @@ export function prepareHistory(
         // Without a matching carrier, preserve thinking as ordinary text.
         // Foreign or stale signatures must never become native thinking.
         const blocks: NativeContentBlock[] = [];
+        let hasTextToolCall = false;
         for (const block of message.content) {
           if (block.type === "text") {
             if (block.text) {
@@ -328,6 +330,7 @@ export function prepareHistory(
             if (allowedToolNames && !allowedToolNames.has(block.name)) {
               textToolCalls.set(block.id, block.name);
               toolCallsAsText.push(block.name);
+              hasTextToolCall = true;
               blocks.push({
                 type: "text",
                 text: `[Tool call: ${block.name}] ${JSON.stringify(block.arguments ?? {})}`,
@@ -355,7 +358,10 @@ export function prepareHistory(
         }
         frames.push({
           type: "assistant",
-          message: { role: "assistant", content: toolUsesLast(blocks) },
+          message: {
+            role: "assistant",
+            content: hasTextToolCall ? toolUsesLast(blocks) : blocks,
+          },
         });
         break;
       }

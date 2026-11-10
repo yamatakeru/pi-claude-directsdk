@@ -168,6 +168,22 @@ test("keeps declared tool calls structured next to calls replayed as text", () =
   assert.deepEqual(restored.toolCallsAsText, ["gone"]);
 });
 
+test("keeps the block order of a turn without calls replayed as text", () => {
+  const message = toolTurn([{ id: "call_1", name: "read" }]);
+  message.content.push({ type: "text", text: "after" });
+  const restored = prepareHistory([
+    { role: "user", content: "go", timestamp: 0 },
+    message,
+    toolResult("call_1", "read", [{ type: "text", text: "contents" }]),
+  ], new Set(["read"]));
+
+  assert.deepEqual(restored.frames[1]?.message.content.map((block) => block.type), [
+    "text",
+    "tool_use",
+    "text",
+  ]);
+});
+
 test("replays an edited native turn without its signature when its calls are undeclared", () => {
   const message = toolTurn([{ id: "call_1", name: "read" }], "claude-native");
   message.content.unshift({ type: "thinking", thinking: "private", thinkingSignature: "signed" });

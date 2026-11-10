@@ -73,4 +73,4 @@ Unsupported models keep the collapsed system message and current tool set. On th
 
 ## Cross-provider history
 
-The provider replays foreign thinking as ordinary text and maps incompatible tool-call IDs together with their result references. A tool call the request does not declare, for example from a side request that sends the history with no tools, is replayed as text with its result. Failed or aborted responses with empty text or thinking placeholders do not block the next request. The stored session remains unchanged.
+The provider replays foreign thinking as ordinary text and maps incompatible tool-call IDs together with their result references. A tool call the request does not declare, in a turn that does not match a native carrier (for example another provider's call in a side request that sends the history with no tools), is replayed as text with its result. Failed or aborted responses with empty text or thinking placeholders do not block the next request. The stored session remains unchanged.
