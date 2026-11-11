@@ -45,6 +45,8 @@ Rules:
 
 ### Request assembly (`src/request.ts`)
 
+Before the request is built, every `docs` section in the transcript's system messages is replaced with Claude Native's prose version (`src/docs-section.ts`, see [Plan usage metering](usage.md#plan-usage-metering)), whichever provider was active when Pi recorded it. A later update that the replacement leaves unchanged is dropped, so switching providers adds no mid-conversation section update.
+
 The system prompt and tool schemas travel through per-request private files with owner-only permissions. Later system messages in the transcript travel through the relay rewrite when the model supports mid-conversation tool changes:
 
 - `system.md`: the system prompt.
