@@ -1,102 +1,66 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import {
-  isRetryableAssistantError,
-  type Api,
-  type AssistantMessageEvent,
-  type Model,
-  type TranscriptContext,
-} from "@earendil-works/pi-ai/compat";
+import { isRetryableAssistantError, type TranscriptContext } from "@earendil-works/pi-ai/compat";
 import {
   ALLOW_USAGE_CREDITS_ENV,
   RATE_LIMIT_DIAGNOSTIC,
   usageCreditsAllowed,
   usageCreditsRejectionError,
 } from "../src/billing.ts";
-import { PROVIDER_ID } from "../src/models.ts";
 import {
-  streamClaudeNative,
-  defaultDeps,
-  type CallDeps,
-} from "../src/stream.ts";
-
-const FAKE_CLAUDE = `#!/usr/bin/env node
-import readline from "node:readline";
+  assistantLines,
+  doneMessage,
+  errorMessage,
+  nativeModel,
+  resultLine,
+  runNative,
+  streamEventLines,
+} from "./support/native.ts";
 
 const usage = { input_tokens: 3, output_tokens: 1 };
-const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-for await (const line of input) {
-  const frame = JSON.parse(line);
-  if (frame.type !== "user") continue;
-  if (frame.shouldQuery === false) {
-    console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 0, usage }));
-    continue;
-  }
-  if (process.env.FAKE_REJECTION === "1") {
-    console.log(JSON.stringify({
-      type: "assistant",
-      message: {
-        role: "assistant",
-        content: [],
-        error: "API Error: 400 Third-party apps now draw from your extra usage, not your plan limits.",
-      },
-    }));
-    console.log(JSON.stringify({ type: "result", subtype: "error_during_execution", is_error: true, usage }));
-    continue;
-  }
-  const text = process.env.FAKE_TEXT || "ok";
-  const events = [
-    { type: "message_start", message: { id: "msg_test", role: "assistant", content: [], usage } },
-    { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-    { type: "content_block_delta", index: 0, delta: { type: "text_delta", text } },
-    { type: "content_block_stop", index: 0 },
-    { type: "message_delta", delta: { stop_reason: "end_turn" }, usage },
-    { type: "message_stop" },
-  ];
-  for (const event of events) console.log(JSON.stringify({ type: "stream_event", event }));
-  console.log(JSON.stringify({
-    type: "assistant",
-    message: { id: "msg_test", role: "assistant", content: [{ type: "text", text }], stop_reason: "end_turn", usage },
-  }));
-  console.log(JSON.stringify({
+
+const context = {
+  messages: [
+    { role: "system", content: "system", timestamp: 0 },
+    { role: "user", content: "hello", timestamp: 1 },
+  ],
+} as unknown as TranscriptContext;
+
+function rateLimitEvent(overage: boolean): unknown {
+  return {
     type: "rate_limit_event",
     rate_limit_info: {
-      status: process.env.FAKE_OVERAGE === "1" ? "allowed_warning" : "allowed",
+      status: overage ? "allowed_warning" : "allowed",
       rateLimitType: "five_hour",
       resetsAt: 1_800_000_000,
-      isUsingOverage: process.env.FAKE_OVERAGE === "1",
+      isUsingOverage: overage,
     },
-  }));
-  console.log(JSON.stringify({
-    type: "result",
-    subtype: "success",
-    is_error: false,
-    num_turns: 1,
-    result: text,
-    usage,
-    total_cost_usd: 0,
-  }));
-}
-`;
-
-function model(): Model<Api> {
-  return {
-    id: "claude-haiku-4-5-20251001",
-    name: "Haiku",
-    api: "claude-native" as Api,
-    provider: PROVIDER_ID,
-    baseUrl: "process://claude-native",
-    reasoning: false,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 200_000,
-    maxTokens: 8_192,
   };
 }
+
+/** The child's output for a reply that Claude Code charged, or did not charge, to usage credits. */
+function reply(text: string, overage: boolean): unknown[] {
+  const response = { blocks: [{ type: "text" as const, text }], stopReason: "end_turn", usage };
+  return [
+    ...streamEventLines(response),
+    ...assistantLines(response),
+    rateLimitEvent(overage),
+    resultLine("success", { result: text, usage }),
+  ];
+}
+
+/** The child's output when Anthropic rejects the request for usage credits. */
+const rejection = [
+  {
+    type: "assistant",
+    message: {
+      role: "assistant",
+      content: [],
+      error: "API Error: 400 Third-party apps now draw from your extra usage, not your plan limits.",
+    },
+  },
+  { type: "result", subtype: "error_during_execution", is_error: true, usage },
+];
 
 test("usage credits are opt-in and rejections are actionable non-retryable billing errors", () => {
   assert.equal(usageCreditsAllowed({}), false);
@@ -115,71 +79,31 @@ test("usage credits are opt-in and rejections are actionable non-retryable billi
 });
 
 test("stops after an overage charge unless usage credits are allowed", async (t) => {
-  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-claude-native-billing-")));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const executable = join(root, "fake-claude.mjs");
-  await writeFile(executable, FAKE_CLAUDE, "utf8");
-  await chmod(executable, 0o755);
+  const run = async (stdout: unknown[], allow: boolean) => (await runNative(t, {
+    context,
+    model: nativeModel({ id: "claude-haiku-4-5-20251001", reasoning: false, maxTokens: 8_192 }),
+    env: {
+      DISABLE_PROMPT_CACHING: "0",
+      CLAUDE_CODE_PROMPT_CACHE_TTL: "1h",
+      [ALLOW_USAGE_CREDITS_ENV]: allow ? "1" : "",
+    },
+    stdout,
+  })).events;
 
-  const deps: CallDeps = {
-    ...defaultDeps,
-    checkCli: () => true,
-    makeRequestDir: () => mkdtempSync(join(root, "request-")),
-    childCwd: () => root,
-  };
-  const context = {
-    messages: [
-      { role: "system", content: "system", timestamp: 0 },
-      { role: "user", content: "hello", timestamp: 1 },
-    ],
-  } as unknown as TranscriptContext;
+  const failure = errorMessage(await run(reply("ok", true), false));
+  assert.match(failure.errorMessage ?? "", /^Claude Code billing:/);
+  assert.equal(isRetryableAssistantError(failure), false);
+  assert.ok(failure.diagnostics?.some((item) => item.type === RATE_LIMIT_DIAGNOSTIC));
 
-  const run = async (
-    overage: boolean,
-    allow: boolean,
-    rejection = false,
-    text = "",
-  ): Promise<AssistantMessageEvent[]> => {
-    const events: AssistantMessageEvent[] = [];
-    const stream = streamClaudeNative(model(), context, {
-      timeoutMs: 5_000,
-      env: {
-        PI_CLAUDE_NATIVE_TEST_UPSTREAM: "1",
-        PI_CLAUDE_NATIVE_COMMAND: executable,
-        DISABLE_PROMPT_CACHING: "0",
-        CLAUDE_CODE_PROMPT_CACHE_TTL: "1h",
-        FAKE_OVERAGE: overage ? "1" : "0",
-        FAKE_REJECTION: rejection ? "1" : "0",
-        FAKE_TEXT: text,
-        [ALLOW_USAGE_CREDITS_ENV]: allow ? "1" : "",
-      },
-    }, deps);
-    for await (const event of stream) events.push(event);
-    return events;
-  };
+  const allowed = doneMessage(await run(reply("ok", true), true));
+  assert.equal(allowed.content.some((block) => block.type === "text" && block.text === "ok"), true);
+  assert.ok(allowed.diagnostics?.some((item) => item.type === RATE_LIMIT_DIAGNOSTIC));
 
-  const stopped = await run(true, false);
-  const failure = stopped.find((event) => event.type === "error");
-  assert.ok(failure && failure.type === "error");
-  assert.match(failure.error.errorMessage ?? "", /^Claude Code billing:/);
-  assert.equal(isRetryableAssistantError(failure.error), false);
-  assert.ok(failure.error.diagnostics?.some((item) => item.type === RATE_LIMIT_DIAGNOSTIC));
-
-  const allowed = await run(true, true);
-  const done = allowed.find((event) => event.type === "done");
-  assert.ok(done && done.type === "done");
-  assert.equal(done.message.content.some((block) => block.type === "text" && block.text === "ok"), true);
-  assert.ok(done.message.diagnostics?.some((item) => item.type === RATE_LIMIT_DIAGNOSTIC));
-
-  const rejected = await run(false, false, true);
-  const rejection = rejected.find((event) => event.type === "error");
-  assert.ok(rejection && rejection.type === "error");
-  assert.match(rejection.error.errorMessage ?? "", /^Claude Code billing: .*usage credits/);
-  assert.equal(isRetryableAssistantError(rejection.error), false);
+  const rejected = errorMessage(await run(rejection, false));
+  assert.match(rejected.errorMessage ?? "", /^Claude Code billing: .*usage credits/);
+  assert.equal(isRetryableAssistantError(rejected), false);
 
   const quote = "You're out of extra usage, as the docs say.";
-  const quoted = await run(false, false, false, quote);
-  const reply = quoted.find((event) => event.type === "done");
-  assert.ok(reply && reply.type === "done");
-  assert.equal(reply.message.content.some((block) => block.type === "text" && block.text === quote), true);
+  const quoted = doneMessage(await run(reply(quote, false), false));
+  assert.equal(quoted.content.some((block) => block.type === "text" && block.text === quote), true);
 });

@@ -1,7 +1,15 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import type { Tool, TranscriptContext } from "@earendil-works/pi-ai/compat";
-import { type NativeBlock, runNative, sseResponse, stdoutRecords } from "./support/native.ts";
+import {
+  type NativeResponse,
+  assistantLines,
+  doneMessage,
+  errorMessage,
+  resultLine,
+  runNative,
+  sseResponse,
+} from "./support/native.ts";
 
 const read: Tool = {
   name: "read",
@@ -16,14 +24,16 @@ const context = {
   ],
 } as unknown as TranscriptContext;
 
-/** A tool-use turn as Claude Code ends it under the provider: max turns, exit code 1. */
-function toolTurn(t: test.TestContext, blocks: NativeBlock[]) {
-  return runNative(t, {
+/** A tool-use turn as Claude Code 2.1.322 ends it under the provider: max turns, exit code 1. */
+async function toolTurn(t: test.TestContext, blocks: NativeResponse["blocks"]) {
+  const response = { blocks, stopReason: "tool_use" };
+  const { events } = await runNative(t, {
     context,
-    sse: sseResponse(blocks, "tool_use"),
-    stdout: stdoutRecords(blocks, "error_max_turns"),
+    upstream: { body: sseResponse(response) },
+    stdout: [...assistantLines(response), resultLine("error_max_turns", { num_turns: 2 })],
     exitCode: 1,
   });
+  return events;
 }
 
 test("emits calls to active tools in order and ends the turn as tool use", async (t) => {
@@ -33,10 +43,9 @@ test("emits calls to active tools in order and ends the turn as tool use", async
     { type: "tool_use", id: "toolu_b", name: "mcp__pi__read", input: { path: "b.txt" } },
   ]);
 
-  const done = events.find((event) => event.type === "done");
-  assert.ok(done && done.type === "done", JSON.stringify(events.find((event) => event.type === "error")));
-  assert.equal(done.reason, "toolUse");
-  assert.deepEqual(done.message.content, [
+  const done = doneMessage(events);
+  assert.equal(done.stopReason, "toolUse");
+  assert.deepEqual(done.content, [
     { type: "text", text: "Reading both." },
     { type: "toolCall", id: "toolu_a", name: "read", arguments: { path: "a.txt" } },
     { type: "toolCall", id: "toolu_b", name: "read", arguments: { path: "b.txt" } },
@@ -59,7 +68,5 @@ test("rejects a call to a tool outside the active tools", async (t) => {
 
   assert.equal(events.some((event) => event.type === "done"), false);
   assert.equal(events.some((event) => event.type === "toolcall_start"), false);
-  const error = events.find((event) => event.type === "error");
-  assert.ok(error && error.type === "error");
-  assert.match(error.error.errorMessage ?? "", /Native returned a tool outside the active tools/);
+  assert.match(errorMessage(events).errorMessage ?? "", /Native returned a tool outside the active tools/);
 });

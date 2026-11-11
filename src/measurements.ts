@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { performance } from "node:perf_hooks";
 import type { JsonObject } from "@earendil-works/pi-ai/compat";
-import type { NativeUsage } from "./types.js";
+import { toNumber, type NativeUsage } from "./types.js";
 
 export const PREFIX_HASH_ENV = "PI_CLAUDE_NATIVE_PROMPT_HASHES";
 
@@ -27,10 +27,6 @@ const MILESTONES: TimingMilestone[] = [
   "childExited",
   "completionPublished",
 ];
-
-function toNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
 
 function cacheReadShare(usage: NativeUsage | undefined): number | null {
   const input = toNumber(usage?.input_tokens);

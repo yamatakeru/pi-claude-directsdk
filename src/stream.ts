@@ -12,84 +12,48 @@
 import { mkdtempSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import {
-  calculateCost,
-  collapseSystemMessages,
-  createAssistantMessageEventStream,
-  getCurrentSystemPrompt,
-  getCurrentTools,
-  getDeclaredTools,
-  getInitialSystemMessage,
-  getSystemMessageText,
-} from "@earendil-works/pi-ai/compat";
+import { calculateCost, createAssistantMessageEventStream } from "@earendil-works/pi-ai/compat";
 import type {
   Api,
   AssistantMessage,
   AssistantMessageDiagnostic,
   AssistantMessageEventStream,
-  JsonObject,
   Model,
   SimpleStreamOptions,
-  ThinkingContent,
-  ToolCall,
   TranscriptContext,
 } from "@earendil-works/pi-ai/compat";
-import { AdmissionRelay, formatRelayFailure } from "./admission.js";
-import { replaceDocsSections } from "./docs-section.js";
-import {
-  enforceUsageCredits,
-  rateLimitDiagnostic,
-  usageCreditsRejectionError,
-  type RateLimitInfo,
-} from "./billing.js";
+import { AdmissionRelay } from "./admission.js";
+import { rateLimitDiagnostic } from "./billing.js";
+import { gateResponse, mapUsage, publishResponse } from "./completion.js";
 import {
   PREFIX_HASH_ENV,
   RequestMeasurements,
   promptHashesEnabled,
 } from "./measurements.js";
 import {
-  ClaudeNativeError,
   cancelledError,
   envConflictError,
   incompleteError,
   isCancelled,
-  loggedOutError,
   missingError,
   nativeError,
-  upstreamError,
 } from "./errors.js";
 import { PROVIDER_ID, QUALIFIED_CLI_RANGE, nativeModel } from "./models.js";
 import type { NativeContextReport } from "./native-context.js";
+import { NativeOutput, parseNativeLine } from "./native-output.js";
 import { rewriteNativeRequest } from "./native-rewrite.js";
-import { supportsNativeToolChanges } from "./model-compat.js";
-import {
-  encodeCarrier,
-  messageProjection,
-  prepareHistory,
-  type ReplayAdjustment,
-} from "./replay.js";
+import { encodeCarrier, messageProjection, type ReplayAdjustment } from "./replay.js";
+import { planRequest } from "./request-plan.js";
 import {
   buildArgv,
   buildChildEnv,
-  replayCacheControl,
-  buildRequestBody,
   checkEnvConflicts,
   requestEffort,
-  toolBareName,
   writeRequestFiles,
 } from "./request.js";
-import {
-  NATIVE_TOOL_CHANGES_BETA,
-  prepareNativeTranscript,
-} from "./transcript.js";
+import { NATIVE_TOOL_CHANGES_BETA } from "./transcript.js";
 import { qualifiedCli, resolveClaude } from "./setup.js";
 import { deepClone, isRecord } from "./types.js";
-import type {
-  NativeAssistantMessage,
-  NativeContentBlock,
-  NativeResultLine,
-  NativeUsage,
-} from "./types.js";
 import { spawnSupervised, stableChildCwd } from "./process.js";
 import type { ChildHandle } from "./process.js";
 
@@ -134,92 +98,6 @@ function zeroUsage(): AssistantMessage["usage"] {
   };
 }
 
-function toNumber(value: unknown): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
-}
-
-/** Pi usage from authoritative native usage. Returns null when incomplete. */
-function mapUsage(usage: NativeUsage | undefined): AssistantMessage["usage"] | null {
-  const input = toNumber(usage?.input_tokens);
-  const output = toNumber(usage?.output_tokens);
-  if (input === null || output === null) {
-    return null;
-  }
-  const cacheRead = toNumber(usage?.cache_read_input_tokens) ?? 0;
-  const cacheWrite = toNumber(usage?.cache_creation_input_tokens) ?? 0;
-  const cacheWrite1h =
-    toNumber(usage?.cache_creation?.ephemeral_1h_input_tokens) ?? undefined;
-  const reasoning =
-    toNumber(usage?.output_tokens_details?.thinking_tokens) ?? undefined;
-  const mapped: AssistantMessage["usage"] = {
-    input,
-    output,
-    cacheRead,
-    cacheWrite,
-    totalTokens: input + output + cacheRead + cacheWrite,
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
-  };
-  if (cacheWrite1h !== undefined) {
-    mapped.cacheWrite1h = cacheWrite1h;
-  }
-  if (reasoning !== undefined) {
-    mapped.reasoning = reasoning;
-  }
-  return mapped;
-}
-
-function mapStopReason(stop: string, detail?: string): {
-  stopReason: "stop" | "length" | "toolUse" | "error";
-  errorMessage?: string;
-} {
-  switch (stop) {
-    case "end_turn":
-      return { stopReason: "stop" };
-    case "max_tokens":
-      return { stopReason: "length" };
-    case "tool_use":
-      return { stopReason: "toolUse" };
-    case "pause_turn":
-    case "stop_sequence":
-      return { stopReason: "stop" };
-    case "refusal":
-      return {
-        stopReason: "error",
-        errorMessage: detail || "The model refused to complete the request",
-      };
-    default:
-      return { stopReason: "error", errorMessage: `Unhandled stop reason: ${stop}` };
-  }
-}
-
-interface ProgressiveBlock {
-  kind: "text" | "thinking";
-  /** Native content-block index from the upstream stream. */
-  nativeIndex: number;
-  contentIndex: number;
-  emitted: string;
-  signature: string;
-  redacted: boolean;
-}
-
-function findProgressive(
-  progressive: ProgressiveBlock[],
-  kind: ProgressiveBlock["kind"],
-  nativeIndex: number,
-): ProgressiveBlock | undefined {
-  return (
-    progressive.find((p) => p.kind === kind && p.nativeIndex === nativeIndex) ??
-    [...progressive].reverse().find((p) => p.kind === kind)
-  );
-}
-
-interface PendingTool {
-  index: number;
-  id: string;
-  name: string;
-  json: string;
-}
-
 export function streamClaudeNative(
   model: Model<Api>,
   context: TranscriptContext,
@@ -259,8 +137,7 @@ async function executeCall(
   let nativeModelId: string | null = null;
   let cliAvailable = false;
   let nativeCostUsd = -1;
-  let observedUsage: NativeUsage | undefined;
-  let latestRateLimit: RateLimitInfo | undefined;
+  let native: NativeOutput | null = null;
   let abortRelay: (() => void) | undefined;
   let nativeContext: NativeContextReport | null = null;
   let replayAdjustments: ReplayAdjustment[] = [];
@@ -285,7 +162,7 @@ async function executeCall(
         measurements: measurements.toJson(
           relay?.requestBodyBytes ?? null,
           relay?.capture.message?.usage,
-          observedUsage,
+          native?.observedUsage,
           relay?.upstreamConnectionReused ?? null,
         ),
       },
@@ -304,7 +181,7 @@ async function executeCall(
     const diagnostics = output.diagnostics ?? [];
     output.diagnostics = [
       ...diagnostics.filter((diagnostic) => diagnostic.type !== "pi-claude-native/meta"),
-      ...(latestRateLimit ? [rateLimitDiagnostic(latestRateLimit)] : []),
+      ...(native?.latestRateLimit ? [rateLimitDiagnostic(native.latestRateLimit)] : []),
       metaDiagnostic(),
     ];
     stream.push({ type: "error", reason: output.stopReason, error: output });
@@ -346,44 +223,9 @@ async function executeCall(
 
     const requestNativeModelId = nativeModel(model.id, model.contextWindow);
     nativeModelId = requestNativeModelId;
-    const cacheControl = replayCacheControl(mergedEnv, requestNativeModelId);
-    context = { ...context, messages: replaceDocsSections(context.messages) };
-    const nativeTranscript = options.toolChoice === "none"
-      ? undefined
-      : prepareNativeTranscript(
-          context.messages,
-          supportsNativeToolChanges(model.compat),
-        );
-    const collapsed = collapseSystemMessages(context);
-    const initialSystem = getInitialSystemMessage(context.messages);
-    const systemPrompt = nativeTranscript && initialSystem
-      ? getSystemMessageText(initialSystem)
-      : getCurrentSystemPrompt(collapsed.messages);
-    const tools = getCurrentTools(context.messages);
-    const history = (nativeTranscript ? context.messages : collapsed.messages)
-      .filter((m) => m.role !== "system");
-    // Pi's per-call override wins; otherwise the model's catalog limit must
-    // reach the child. Claude Code replaces the request's max_tokens with its
-    // own default (32,000 for models missing from its table), so a model limit
-    // that never leaves Pi caps the turn far below the catalog value.
-    const maxTokens =
-      typeof options["maxTokens"] === "number" ? options["maxTokens"] : model.maxTokens;
-    const build = buildRequestBody({
-      tools,
-      toolChoice: options.toolChoice,
-      reasoning: options.reasoning,
-      thinkingLevelMap: model.thinkingLevelMap,
-      maxTokens,
-    });
-    if (nativeTranscript) {
-      build.body["tools"] = nativeTranscript.requestTools;
-    }
-    const allowedToolNames = nativeTranscript
-      ? new Set(getDeclaredTools(context.messages).map((tool) => tool.name))
-      : new Set(build.toolNames);
-    const replay = prepareHistory(history, allowedToolNames, cacheControl);
-    const { frames } = replay;
-    replayAdjustments = replay.replayAdjustments;
+    const plan = planRequest(model, context, options, mergedEnv, requestNativeModelId);
+    const { systemPrompt, build, nativeTranscript, frames } = plan;
+    replayAdjustments = plan.replayAdjustments;
     measurements.setReplayFrameCount(frames.length);
     measurements.mark("historyPrepared");
 
@@ -507,211 +349,20 @@ async function executeCall(
     }
     child.closeStdin();
 
-    // Consume the final response.
-    const assistants: NativeAssistantMessage[] = [];
-    const results: NativeResultLine[] = [];
-    let stopped = false;
-    let streamId: string | undefined;
-    let streamModel: string | undefined;
-    let streamUsage: NativeUsage | undefined;
-    let streamStop: string | undefined;
-    let nativeErrorText: string | undefined;
-    let emittedText = "";
-    const progressive: ProgressiveBlock[] = [];
-    const pendingTools: PendingTool[] = [];
-
+    // Consume the final response. Text and thinking stream as they arrive.
+    const nativeOutput = new NativeOutput(output, stream);
+    native = nativeOutput;
     for (;;) {
       const line = await child.nextLine();
       if (line === null) {
         break;
       }
-      const event = parseNativeLine(line);
-      if (event.type === "assistant") {
-        const message = (event as { message?: unknown }).message;
-        if (isRecord(message)) {
-          const detail = assistantErrorDetail(message);
-          if (detail) {
-            nativeErrorText = nativeErrorText ? `${nativeErrorText}\n${detail.text}` : detail.text;
-            if (detail.code === "authentication_failed") {
-              nativeErrorText = `authentication_failed: ${nativeErrorText}`;
-            }
-          } else {
-            assistants.push(message as unknown as NativeAssistantMessage);
-          }
-        }
-      } else if (event.type === "result") {
-        const result = event as unknown as NativeResultLine;
-        results.push(result);
-        if (isRecord(result.usage)) {
-          observedUsage = result.usage as NativeUsage;
-        }
-      } else if (event.type === "rate_limit_event") {
-        const info = event["rate_limit_info"];
-        if (isRecord(info)) {
-          latestRateLimit = info as RateLimitInfo;
-        }
-      } else if (event.type === "stream_event") {
-        const native = (event as { event?: unknown }).event;
-        if (!isRecord(native)) {
-          continue;
-        }
-        switch (native["type"]) {
-          case "message_start": {
-            const message = native["message"];
-            if (isRecord(message)) {
-              streamId = typeof message["id"] === "string" ? message["id"] : streamId;
-              streamModel =
-                typeof message["model"] === "string" ? message["model"] : streamModel;
-              if (isRecord(message["usage"])) {
-                streamUsage = message["usage"] as NativeUsage;
-                observedUsage = streamUsage;
-              }
-            }
-            break;
-          }
-          case "content_block_start": {
-            const index = toNumber(native["index"]) ?? pendingTools.length + progressive.length;
-            const block = native["content_block"];
-            if (!isRecord(block)) {
-              break;
-            }
-            if (block["type"] === "text") {
-              const contentIndex = output.content.length;
-              output.content.push({ type: "text", text: "" });
-              progressive.push({ kind: "text", nativeIndex: index, contentIndex, emitted: "", signature: "", redacted: false });
-              stream.push({ type: "text_start", contentIndex, partial: output });
-            } else if (block["type"] === "thinking") {
-              const contentIndex = output.content.length;
-              const thinkingBlock: ThinkingContent = {
-                type: "thinking",
-                thinking: "",
-                thinkingSignature: typeof block["signature"] === "string" ? block["signature"] : "",
-              };
-              output.content.push(thinkingBlock);
-              progressive.push({
-                kind: "thinking",
-                nativeIndex: index,
-                contentIndex,
-                emitted: "",
-                signature: thinkingBlock.thinkingSignature ?? "",
-                redacted: false,
-              });
-              stream.push({ type: "thinking_start", contentIndex, partial: output });
-            } else if (block["type"] === "redacted_thinking") {
-              const contentIndex = output.content.length;
-              output.content.push({
-                type: "thinking",
-                thinking: "[Reasoning redacted]",
-                thinkingSignature: typeof block["data"] === "string" ? block["data"] : "",
-                redacted: true,
-              });
-              progressive.push({
-                kind: "thinking",
-                nativeIndex: index,
-                contentIndex,
-                emitted: "[Reasoning redacted]",
-                signature: "",
-                redacted: true,
-              });
-              stream.push({ type: "thinking_start", contentIndex, partial: output });
-            } else if (block["type"] === "tool_use") {
-              pendingTools.push({
-                index,
-                id: typeof block["id"] === "string" ? block["id"] : "",
-                name: typeof block["name"] === "string" ? block["name"] : "",
-                json: "",
-              });
-            } else {
-              throw new ClaudeNativeError(
-                "native",
-                `Unsupported native content block: ${String(block["type"])}`,
-              );
-            }
-            break;
-          }
-          case "content_block_delta": {
-            const delta = native["delta"];
-            const index = toNumber(native["index"]) ?? -1;
-            if (!isRecord(delta)) {
-              break;
-            }
-            if (delta["type"] === "text_delta" && typeof delta["text"] === "string") {
-              const target = findProgressive(progressive, "text", index);
-              if (target) {
-                const block = output.content[target.contentIndex];
-                if (block?.type === "text") {
-                  block.text += delta["text"];
-                  target.emitted += delta["text"];
-                  emittedText += delta["text"];
-                  stream.push({
-                    type: "text_delta",
-                    contentIndex: target.contentIndex,
-                    delta: delta["text"],
-                    partial: output,
-                  });
-                }
-              }
-            } else if (
-              delta["type"] === "thinking_delta" &&
-              typeof delta["thinking"] === "string"
-            ) {
-              const target = findProgressive(progressive, "thinking", index);
-              const open = target && !target.redacted ? target : undefined;
-              if (open) {
-                const block = output.content[open.contentIndex];
-                if (block?.type === "thinking") {
-                  block.thinking += delta["thinking"];
-                  open.emitted += delta["thinking"];
-                  stream.push({
-                    type: "thinking_delta",
-                    contentIndex: open.contentIndex,
-                    delta: delta["thinking"],
-                    partial: output,
-                  });
-                }
-              }
-            } else if (delta["type"] === "signature_delta" && typeof delta["signature"] === "string") {
-              const target = findProgressive(progressive, "thinking", index);
-              if (target) {
-                target.signature += delta["signature"];
-                const block = output.content[target.contentIndex];
-                if (block?.type === "thinking") {
-                  block.thinkingSignature = (block.thinkingSignature ?? "") + delta["signature"];
-                }
-              }
-            } else if (delta["type"] === "input_json_delta") {
-              const tool = pendingTools.find((t) => t.index === index) ?? pendingTools[pendingTools.length - 1];
-              if (tool && typeof delta["partial_json"] === "string") {
-                tool.json += delta["partial_json"];
-              }
-            }
-            break;
-          }
-          case "content_block_stop":
-            break;
-          case "message_delta": {
-            const delta = native["delta"];
-            if (isRecord(delta) && typeof delta["stop_reason"] === "string") {
-              streamStop = delta["stop_reason"];
-            }
-            const usage = native["usage"];
-            if (isRecord(usage)) {
-              streamUsage = { ...(streamUsage ?? {}), ...(usage as NativeUsage) } as NativeUsage;
-              observedUsage = streamUsage;
-            }
-            break;
-          }
-          case "message_stop":
-            stopped = true;
-            break;
-          default:
-            break;
-        }
-      }
+      nativeOutput.accept(line);
       if (options.signal?.aborted) {
         throw cancelledError();
       }
     }
+
     const exitInfo = await child.wait();
     measurements.mark("childExited");
     if (options.signal?.aborted) {
@@ -721,274 +372,47 @@ async function executeCall(
       await options.onResponse?.(providerResponse, model);
     }
 
-    // Completion gate. Tool calls publish only after the first upstream
-    // response is complete, usage and stop reason are captured, and the
-    // child has exited.
-    const used = relay.used;
-    let authoritative: NativeAssistantMessage;
-    const soleResult = results[0];
-    // Native result diagnostics can be present even when stderr is empty.
-    const childDetail = child
-      ? ` (exit ${child.exitInfo?.code ?? "?"}${
-          child.exitInfo?.signal ? `/${child.exitInfo.signal}` : ""
-        }, stderr: ${child.stderrTail(500) || "<empty>"})`
-      : "";
-    // A failed upstream response explains the turn even when the CLI then ends
-    // without a result line, as it can at a usage limit, so report it first.
-    if (used && (relay.status !== 200 || !relay.capture.complete || !relay.capture.message)) {
-      const rejection = usageCreditsRejectionError(
-        [relay.errorText(), nativeErrorText].filter(Boolean).join("\n"),
-      );
-      if (rejection) throw rejection;
-      throw upstreamError(
-        `first upstream attempt: status ${relay.status ?? "unknown"}, ` +
-          `capture ${relay.capture.complete ? "complete" : "incomplete"}` +
-          (relay.failure ? `, relay failure ${formatRelayFailure(relay.failure)}` : "") +
-          `, native retries denied: ${relay.denied}` +
-          (relay.errorText() ? `, upstream said: ${relay.errorText().slice(0, 500)}` : "") +
-          (nativeErrorText ? `: ${nativeErrorText}` : "") +
-          (results.length !== 1 ? `; native result lines: ${results.length}${childDetail}` : ""),
-      );
-    }
-    if (results.length !== 1 || !soleResult) {
-      throw incompleteError(
-        `Expected exactly one native result, saw ${results.length}${childDetail}`,
-      );
-    }
-    const result: NativeResultLine = soleResult;
-    const resultErrors = [
-      ...(typeof result["result"] === "string" && result["result"] ? [result["result"]] : []),
-      ...(Array.isArray(result["errors"]) ? result["errors"].filter((value): value is string => typeof value === "string") : []),
-    ].join("; ");
-    if (used && relay.capture.message) {
-      authoritative = relay.capture.message;
-      stopped = true;
-    } else {
-      if (nativeErrorText && /authentication_failed|not logged in/i.test(nativeErrorText)) {
-        throw loggedOutError(nativeErrorText);
-      }
-      if (nativeErrorText) {
-        const rejection = usageCreditsRejectionError(nativeErrorText);
-        if (rejection) throw rejection;
-        throw nativeError(nativeErrorText);
-      }
-      if (result.is_error && resultErrors) {
-        const rejection = usageCreditsRejectionError(resultErrors);
-        if (rejection) throw rejection;
-        if (/not logged in|authentication_failed/i.test(resultErrors)) {
-          throw loggedOutError(resultErrors);
-        }
-        if (/prompt is too long|context_length_exceeded/i.test(resultErrors)) {
-          throw nativeError(
-            `context_length_exceeded: ${resultErrors}. Model ${model.id} uses native route ${nativeModelId} ` +
-            `with a configured context window of ${model.contextWindow.toLocaleString("en-US")} tokens. ` +
-            "Check this model's contextWindow override in models.json or compact the session.",
-          );
-        }
-        throw nativeError(`${result.subtype ?? "native failure"}: ${resultErrors}${childDetail}`);
-      }
-      if (assistants.length === 0 || !stopped) {
-        const resultText =
-          typeof result["result"] === "string" ? result["result"] : undefined;
-        if (resultText && /not logged in/i.test(resultText)) {
-          throw loggedOutError(resultText);
-        }
-        throw incompleteError(`assistant, message_stop and one result required${childDetail}`);
-      }
-      authoritative = mergeAssistants(assistants, result);
-    }
-
-    const denialHandled = relay.denied > 0 || authoritative.stop_reason === "refusal";
-    const requestRejection = usageCreditsRejectionError(
-      [relay.errorText(), nativeErrorText, result.is_error ? resultErrors : undefined].filter(Boolean).join("\n"),
-    );
-    if (requestRejection) {
-      throw requestRejection;
-    }
-    if (nativeErrorText && !denialHandled) {
-      throw nativeError(nativeErrorText);
-    }
-    const exitCode = exitInfo.code;
-    const calls = blocksOf(authoritative, "tool_use");
-    // A call cut off at max_tokens is dropped from the capture. Claude Code
-    // keeps it and answers it locally, which needs a second turn.
-    const cutCalls = relay.capture.unparsed;
-    const boundary =
-      (calls.length > 0 || cutCalls.length > 0) && result?.subtype === "error_max_turns" && exitCode === 1;
-    if (
-      !boundary &&
-      !denialHandled &&
-      (exitCode !== 0 || result?.is_error || result?.subtype !== "success")
-    ) {
-      const detail = resultErrors ? `: ${resultErrors}` : "";
-      throw nativeError(`${result?.subtype ?? "unknown exit"}${detail}`);
-    }
-
-    observedUsage = authoritative.usage ?? streamUsage ?? result.usage;
-    const usage = mapUsage(observedUsage);
-    if (!usage) {
-      throw incompleteError("Native result missing complete token usage");
-    }
-    output.usage = usage;
-    calculateCost(model, output.usage);
-    enforceUsageCredits(latestRateLimit, mergedEnv);
-    if (typeof authoritative.id === "string" && authoritative.id) {
-      output.responseId = authoritative.id;
-    } else if (streamId) {
-      output.responseId = streamId;
-    }
-    const responseModel = authoritative.model ?? streamModel;
-    if (responseModel && responseModel !== model.id) {
-      output.responseModel = responseModel;
-    }
-    output.rawStopReason = authoritative.stop_reason ?? streamStop ?? result?.subtype ?? "unknown";
-    output.endTurn = (authoritative.stop_reason ?? streamStop) === "end_turn";
-
-    // Reconcile progressive text/thinking with the authoritative message,
-    // then close every open block and publish tool calls.
-    const finalText = textOf(authoritative);
-    if (emittedText !== finalText) {
-      if (emittedText && !finalText.startsWith(emittedText)) {
-        throw incompleteError("Native final text differs from incremental stream");
-      }
-      const tail = finalText.slice(emittedText.length);
-      if (tail) {
-        const target = [...progressive].reverse().find((p) => p.kind === "text");
-        if (target) {
-          const block = output.content[target.contentIndex];
-          if (block?.type === "text") {
-            block.text += tail;
-            stream.push({
-              type: "text_delta",
-              contentIndex: target.contentIndex,
-              delta: tail,
-              partial: output,
-            });
-          }
-        } else {
-          const contentIndex = output.content.length;
-          output.content.push({ type: "text", text: tail });
-          stream.push({ type: "text_start", contentIndex, partial: output });
-          stream.push({ type: "text_delta", contentIndex, delta: tail, partial: output });
-        }
-      }
-    }
-    const finalThinkings = blocksOf(authoritative, "thinking");
-    const openThinkings = progressive.filter((p) => p.kind === "thinking");
-    openThinkings.forEach((prog, i) => {
-      const block = output.content[prog.contentIndex];
-      const native = finalThinkings[i] as
-        | { thinking?: unknown; signature?: unknown }
-        | undefined;
-      if (block?.type === "thinking" && !prog.redacted) {
-        if (typeof native?.signature === "string") {
-          block.thinkingSignature = native.signature;
-        } else if (prog.signature) {
-          block.thinkingSignature = prog.signature;
-        }
-      }
-      if (block?.type === "thinking") {
-        stream.push({
-          type: "thinking_end",
-          contentIndex: prog.contentIndex,
-          content: block.thinking,
-          partial: output,
-        });
-      }
+    // The child's exit status and stderr, for errors about its result.
+    const childDetail = ` (exit ${child.exitInfo?.code ?? "?"}${
+      child.exitInfo?.signal ? `/${child.exitInfo.signal}` : ""
+    }, stderr: ${child.stderrTail(500) || "<empty>"})`;
+    const gated = gateResponse({
+      relay,
+      native: nativeOutput,
+      exitCode: exitInfo.code,
+      childDetail,
+      model,
+      nativeModelId: requestNativeModelId,
     });
-    const openTexts = progressive.filter((p) => p.kind === "text");
-    for (const prog of openTexts) {
-      const block = output.content[prog.contentIndex];
-      if (block?.type === "text") {
-        stream.push({
-          type: "text_end",
-          contentIndex: prog.contentIndex,
-          content: block.text,
-          partial: output,
-        });
-      }
-    }
-
-    const toolCalls: ToolCall[] = [];
-    for (const block of calls) {
-      const raw = block as unknown as Record<string, unknown>;
-      const name = typeof raw["name"] === "string" ? raw["name"] : "";
-      const bare = toolBareName(name);
-      if (!bare || !build.toolNames.includes(bare)) {
-        throw new ClaudeNativeError(
-          "native",
-          "Native returned a tool outside the active tools",
-        );
-      }
-      const parsed = parseToolInput(raw["input"]);
-      const toolCall: ToolCall = {
-        type: "toolCall",
-        id: typeof raw["id"] === "string" && raw["id"] ? raw["id"] : `tool-${toolCalls.length}`,
-        name: bare,
-        arguments: parsed,
-      };
-      const contentIndex = output.content.length;
-      output.content.push({ type: "toolCall", id: toolCall.id, name: toolCall.name, arguments: {} });
-      stream.push({ type: "toolcall_start", contentIndex, partial: output });
-      const delta = JSON.stringify(parsed);
-      stream.push({ type: "toolcall_delta", contentIndex, delta, partial: output });
-      const final = output.content[contentIndex];
-      if (final?.type === "toolCall") {
-        final.arguments = parsed;
-      }
-      toolCalls.push(toolCall);
-      stream.push({ type: "toolcall_end", contentIndex, toolCall, partial: output });
-    }
-
-    const stop = authoritative.stop_reason ?? streamStop ?? (calls.length > 0 ? "tool_use" : "end_turn");
-    const mapped = mapStopReason(
-      stop,
-      stop === "refusal" ? refusalText(authoritative) : undefined,
-    );
-    if (mapped.stopReason === "toolUse" && toolCalls.length === 0) {
-      throw incompleteError("Native stopped for tool use without tool calls");
-    }
-    output.stopReason = mapped.stopReason;
-    if (mapped.errorMessage) {
-      output.errorMessage = mapped.errorMessage;
-    }
-    // A turn can spend its entire output budget on thinking and return no text
-    // and no tool call. Pi would publish an empty message and a generic
-    // truncation notice that names no cause, so fail with the cause instead.
-    const answered = output.content.some(
-      (block) => (block.type === "text" && block.text.trim() !== "") || block.type === "toolCall",
-    );
-    if (stop === "max_tokens" && !answered && cutCalls.length > 0) {
-      throw nativeError(
-        `${model.id} ran out of output tokens while writing the arguments of ${cutCalls.join(", ")}, ` +
-          "so the call was not run. Ask for smaller steps, or lower the thinking level, then retry.",
-      );
-    }
-    if (stop === "max_tokens" && !answered) {
-      throw nativeError(
-        `${model.id} spent its whole output budget on thinking and returned no answer. ` +
-          "Lower the thinking level or switch models, then retry.",
-      );
-    }
+    const stopReason = publishResponse({
+      output,
+      stream,
+      model,
+      native: nativeOutput,
+      gated,
+      toolNames: build.toolNames,
+      cutCalls: relay.capture.unparsed,
+      env: mergedEnv,
+    });
 
     const projection = messageProjection(output);
-    const natives = used && relay.capture.message ? [relay.capture.message] : assistants;
+    const natives = relay.used && relay.capture.message ? [relay.capture.message] : nativeOutput.assistants;
     nativeCostUsd =
-      typeof result.total_cost_usd === "number" ? result.total_cost_usd : -1;
+      typeof gated.result.total_cost_usd === "number" ? gated.result.total_cost_usd : -1;
     const carrier = encodeCarrier(natives, projection);
     measurements.mark("completionPublished");
     output.diagnostics = [
       carrier,
-      ...(latestRateLimit ? [rateLimitDiagnostic(latestRateLimit)] : []),
+      ...(nativeOutput.latestRateLimit ? [rateLimitDiagnostic(nativeOutput.latestRateLimit)] : []),
       metaDiagnostic(),
     ];
 
-    if (output.stopReason === "error") {
+    if (stopReason === "error") {
       stream.push({ type: "error", reason: "error", error: output });
       stream.end();
       return;
     }
-    stream.push({ type: "done", reason: output.stopReason, message: output });
+    stream.push({ type: "done", reason: stopReason, message: output });
     stream.end();
   } catch (error) {
     // Preserve partial usage captured before the failure.
@@ -1007,104 +431,4 @@ async function executeCall(
   } finally {
     cleanup();
   }
-}
-
-function parseNativeLine(line: string): { type: string; [key: string]: unknown } {
-  try {
-    const parsed = JSON.parse(line) as unknown;
-    if (!isRecord(parsed) || typeof parsed["type"] !== "string") {
-      throw new Error("not a native event");
-    }
-    return parsed as { type: string; [key: string]: unknown };
-  } catch (error) {
-    throw new ClaudeNativeError(
-      "native",
-      `Invalid native stream-json output: ${JSON.stringify(line.slice(0, 300))}`,
-      { cause: error },
-    );
-  }
-}
-
-function assistantErrorDetail(message: Record<string, unknown>): {
-  text: string;
-  code?: string | undefined;
-} | null {
-  const direct = message["error"];
-  if (typeof direct === "string" && direct) {
-    return { text: direct };
-  }
-  if (isRecord(direct)) {
-    return {
-      text: typeof direct["message"] === "string" ? direct["message"] : JSON.stringify(direct),
-      code: typeof direct["code"] === "string" ? direct["code"] : undefined,
-    };
-  }
-  const content = message["message"];
-  const blocks = isRecord(content) ? content["content"] : message["content"];
-  if (Array.isArray(blocks)) {
-    const text = blocks
-      .filter(isRecord)
-      .filter((b) => b["type"] === "text" && typeof b["text"] === "string")
-      .map((b) => b["text"] as string)
-      .join("\n");
-    const nested = (message["message"] as Record<string, unknown> | undefined)?.["error"];
-    if (text && nested) {
-      return { text };
-    }
-  }
-  return null;
-}
-
-/** Merge stdout assistant messages for the non-relay fallback path. */
-function mergeAssistants(
-  assistants: NativeAssistantMessage[],
-  result: NativeResultLine,
-): NativeAssistantMessage {
-  const content: NativeContentBlock[] = [];
-  let stop: string | null | undefined;
-  let id: string | undefined;
-  let model: string | undefined;
-  for (const assistant of assistants) {
-    content.push(...deepClone(assistant.content));
-    stop = assistant.stop_reason ?? stop;
-    id = assistant.id ?? id;
-    model = assistant.model ?? model;
-  }
-  return {
-    role: "assistant",
-    content,
-    stop_reason: stop ?? null,
-    usage: deepClone(result.usage ?? { input_tokens: 0, output_tokens: 0 }),
-    ...(id ? { id } : {}),
-    ...(model ? { model } : {}),
-  };
-}
-
-function blocksOf(message: NativeAssistantMessage, type: string): NativeContentBlock[] {
-  return message.content.filter((b) => b.type === type);
-}
-
-function textOf(message: NativeAssistantMessage): string {
-  return blocksOf(message, "text")
-    .map((b) => ((b as unknown as Record<string, unknown>)["text"] as string) ?? "")
-    .join("");
-}
-
-function refusalText(message: NativeAssistantMessage): string {
-  const text = textOf(message);
-  return text || "The model refused to complete the request";
-}
-
-function parseToolInput(input: unknown): JsonObject {
-  const coerce = (value: unknown): JsonObject => {
-    if (!isRecord(value)) {
-      throw new ClaudeNativeError("native", "Native tool input is not an object");
-    }
-    // A JSON round-trip keeps the arguments within pi-ai's JsonValue type.
-    return JSON.parse(JSON.stringify(value)) as JsonObject;
-  };
-  if (typeof input === "string") {
-    return coerce(input.trim() ? (JSON.parse(input) as unknown) : {});
-  }
-  return coerce(input);
 }

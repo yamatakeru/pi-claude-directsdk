@@ -1,63 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync } from "node:fs";
-import { chmod, mkdtemp, realpath, rm, writeFile } from "node:fs/promises";
-import { createServer } from "node:http";
-import { tmpdir } from "node:os";
-import { join } from "node:path";
 import test from "node:test";
-import type {
-  Api,
-  AssistantMessageEvent,
-  Model,
-  Tool,
-  TranscriptContext,
-} from "@earendil-works/pi-ai/compat";
+import type { Api, Model, Tool, TranscriptContext } from "@earendil-works/pi-ai/compat";
 import { NATIVE_TOOL_CHANGES_BETA } from "../src/transcript.ts";
 import { PROVIDER_ID } from "../src/models.ts";
-import { defaultDeps, streamClaudeNative, type CallDeps } from "../src/stream.ts";
-
-const FAKE_CLAUDE = `#!/usr/bin/env node
-import { readFileSync } from "node:fs";
-import readline from "node:readline";
-
-const settingsPath = process.argv[process.argv.indexOf("--settings") + 1];
-const settings = JSON.parse(readFileSync(settingsPath, "utf8"));
-const extraBody = JSON.parse(settings.env.CLAUDE_CODE_EXTRA_BODY);
-const usage = { input_tokens: 3, output_tokens: 1 };
-const payload = {
-  ...extraBody,
-  messages: [
-    { role: "user", content: [{ type: "text", text: "first" }] },
-    { role: "assistant", content: [{ type: "text", text: "one" }] },
-    { role: "user", content: [{ type: "text", text: "second" }] },
-  ],
-};
-
-const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
-for await (const line of input) {
-  const frame = JSON.parse(line);
-  if (frame.type !== "user") continue;
-  if (frame.shouldQuery === false) {
-    console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 0, usage }));
-    continue;
-  }
-  const response = await fetch(process.env.ANTHROPIC_BASE_URL + "/v1/messages", {
-    method: "POST",
-    headers: { "content-type": "application/json", "anthropic-beta": "existing-beta" },
-    body: JSON.stringify(payload),
-  });
-  const text = await response.text();
-  if (!response.ok) {
-    console.error(text);
-    process.exit(1);
-  }
-  console.log(JSON.stringify({
-    type: "assistant",
-    message: { id: "msg_test", role: "assistant", content: [{ type: "text", text: "ok" }], stop_reason: "end_turn", usage },
-  }));
-  console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 1, usage, total_cost_usd: 0 }));
-}
-`;
+import { doneMessage, nativeModel, resultLine, runNative, sseResponse } from "./support/native.ts";
 
 const alpha: Tool = {
   name: "alpha",
@@ -71,60 +17,16 @@ const beta: Tool = {
 };
 
 function model(): Model<Api> {
-  return {
+  return nativeModel({
     id: "claude-opus-5",
     name: "Opus",
-    api: "claude-native" as Api,
-    provider: PROVIDER_ID,
-    baseUrl: "process://claude-native",
-    reasoning: true,
-    input: ["text"],
-    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 200_000,
     maxTokens: 8_192,
     // The catalog sets this from Anthropic's published model list.
     compat: { supportsMidConvoToolChanges: true },
-  };
+  });
 }
 
 test("streams a removed tool without rewriting the initial request prefix", async (t) => {
-  let seenBeta = "";
-  let seenBody: Record<string, unknown> | undefined;
-  const upstream = createServer((request, response) => {
-    seenBeta = String(request.headers["anthropic-beta"] ?? "");
-    const chunks: Buffer[] = [];
-    request.on("data", (chunk: Buffer) => chunks.push(chunk));
-    request.on("end", () => {
-      seenBody = JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>;
-      const events = [
-        { type: "message_start", message: { id: "msg_test", role: "assistant", content: [], usage: { input_tokens: 3, output_tokens: 1 } } },
-        { type: "content_block_start", index: 0, content_block: { type: "text", text: "" } },
-        { type: "content_block_delta", index: 0, delta: { type: "text_delta", text: "ok" } },
-        { type: "content_block_stop", index: 0 },
-        { type: "message_delta", delta: { stop_reason: "end_turn" }, usage: { input_tokens: 3, output_tokens: 1 } },
-        { type: "message_stop" },
-      ];
-      response.writeHead(200, { "content-type": "text/event-stream" });
-      response.end(events.map((event) => `data: ${JSON.stringify(event)}\n\n`).join(""));
-    });
-  });
-  await new Promise<void>((resolve) => upstream.listen(0, "127.0.0.1", resolve));
-  t.after(() => new Promise<void>((resolve) => upstream.close(() => resolve())));
-  const address = upstream.address();
-  assert.ok(address && typeof address !== "string");
-
-  const root = await realpath(await mkdtemp(join(tmpdir(), "pi-claude-native-tools-")));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  const executable = join(root, "fake-claude.mjs");
-  await writeFile(executable, FAKE_CLAUDE, "utf8");
-  await chmod(executable, 0o755);
-
-  const deps: CallDeps = {
-    ...defaultDeps,
-    checkCli: () => true,
-    makeRequestDir: () => mkdtempSync(join(root, "request-")),
-    childCwd: () => root,
-  };
   const context = {
     messages: [
       { role: "system", content: "base", toolsAdded: [alpha], timestamp: 0 },
@@ -145,22 +47,35 @@ test("streams a removed tool without rewriting the initial request prefix", asyn
     ],
   } as unknown as TranscriptContext;
 
-  const events: AssistantMessageEvent[] = [];
-  const stream = streamClaudeNative(model(), context, {
-    timeoutMs: 5_000,
+  const reply = { blocks: [{ type: "text" as const, text: "ok" }], stopReason: "end_turn" };
+  const { events, upstreamRequests } = await runNative(t, {
+    context,
+    model: model(),
     env: {
-      PI_CLAUDE_NATIVE_TEST_UPSTREAM: "1",
-      PI_CLAUDE_NATIVE_COMMAND: executable,
-      ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}`,
       DISABLE_PROMPT_CACHING: "0",
       DISABLE_PROMPT_CACHING_OPUS: "0",
       CLAUDE_CODE_PROMPT_CACHE_TTL: "1h",
     },
-  }, deps);
-  for await (const event of stream) events.push(event);
+    upstream: { body: sseResponse(reply) },
+    // The child's own request: the history so far as Claude Code sends it.
+    request: {
+      messages: [
+        { role: "user", content: [{ type: "text", text: "first" }] },
+        { role: "assistant", content: [{ type: "text", text: "one" }] },
+        { role: "user", content: [{ type: "text", text: "second" }] },
+      ],
+      headers: { "anthropic-beta": "existing-beta" },
+    },
+    stdout: [
+      { type: "assistant", message: { id: "msg_test", role: "assistant", content: [{ type: "text", text: "ok" }], stop_reason: "end_turn" } },
+      resultLine("success"),
+    ],
+  });
 
-  const done = events.find((event) => event.type === "done");
-  assert.ok(done && done.type === "done");
+  doneMessage(events);
+  assert.equal(upstreamRequests.length, 1);
+  const seenBeta = String(upstreamRequests[0]?.headers["anthropic-beta"] ?? "");
+  const seenBody = upstreamRequests[0]?.body;
   assert.match(seenBeta, new RegExp(NATIVE_TOOL_CHANGES_BETA));
   assert.match(seenBeta, /existing-beta/);
   assert.ok(seenBody);

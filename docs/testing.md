@@ -28,12 +28,14 @@ Use `--pi /absolute/path/to/pi` or `PI_VERIFY_PI` to select another installed ex
 
 ## Verified environments
 
-The current maintainer installation is Pi 1.5.0 with Claude Code 2.1.318 on macOS arm64, confirmed with `pi --version` and `claude --version`. On 2.1.318, these checks passed:
+The current maintainer installation is Pi 1.5.2 with Claude Code 2.1.322 on macOS arm64, confirmed with `pi --version` and `claude --version`. On 2.1.322, these checks passed:
 
 - Offline startup (`npm run verify`): no stderr and no observed Claude child starts.
 - Fresh model request (`fresh --paid`): a successful response with the user's full extension set.
-- Warm cache (`warm --paid`, no prior session): three successful requests, one upstream request each, stable Pi prompt and tool hashes, and cache reads of 0%, 98.68% and 99.87%.
-- Replayed thinking, as a temporary check: signed thinking from an earlier turn was still sent and accepted; conversations started on 2.1.286 or earlier were not tested (see [Replayed thinking and the assistant model](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
+- Complete existing-session replay (`session --paid`): a session written by `openai-codex/gpt-6.1-sol` (18 assistant turns) continued on Haiku 5.5, with 17 replay acknowledgments.
+- Warm cache (`warm --paid`, no prior session): three successful requests, one upstream request each, stable Pi prompt and tool hashes, and cache reads of 64.26%, 98.76% and 99.85%. The first request read a prefix that an earlier run had written within the cache lifetime; on a cold cache earlier the same day it read 0%.
+
+Replayed thinking was last checked on Claude Code 2.1.318, as a temporary check: signed thinking from an earlier turn was still sent and accepted; conversations started on 2.1.286 or earlier were not tested (see [Replayed thinking and the assistant model](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
 
 After the replacement `<docs>` section was updated for Pi 1.5.0, a navigation check ran on Claude Code 2.1.316 as temporary checks with `--tools read,bash`. Asked how a script calls a classifier and whether Pi can generate images, Haiku 5.5 opened `docs/docs.json`, then `codemode.md`, and answered correctly. Both requests were accepted as plan usage.
 
@@ -130,7 +132,7 @@ npm run build
 npm test
 ```
 
-The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including fixture tests for the request rewrites and relay failure handling, grouped by issue. Branch and pull request CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
+The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including fixture tests for the request rewrites and relay failure handling, grouped by issue. End-to-end provider tests run each call through a fake `claude` child and an optional loopback upstream from `tests/support/native.ts`. Branch and pull request CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
 
 The permanent harness does not yet exercise an in-process `/reload`, forced subprocess stalls, cancellation, or an explicit tool round trip. Temporary checks described above do not extend the supported scenarios.
 

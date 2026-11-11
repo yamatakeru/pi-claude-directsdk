@@ -114,6 +114,11 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** A finite number, or null. */
+export function toNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 /** JSON-safe deep copy for native payloads. */
 export function deepClone<T>(value: T): T {
   return structuredClone(value);
