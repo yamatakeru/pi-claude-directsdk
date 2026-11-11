@@ -117,11 +117,13 @@ test("accepts historical calls to tools declared earlier in the transcript", () 
     },
     { role: "user", content: "continue", timestamp: 3 },
   ];
-  assert.deepEqual(prepareHistory(history, new Set(["beta"])).toolCallsAsText, ["alpha"]);
+  assert.deepEqual(prepareHistory(history, new Set(["beta"])).replayAdjustments, [
+    { kind: "toolCallAsText", tool: "alpha" },
+  ]);
   const declared = new Set(getDeclaredTools(conversation()).map((tool) => tool.name));
   assert.deepEqual([...declared], ["alpha", "beta"]);
   const replayed = prepareHistory(history, declared);
-  assert.deepEqual(replayed.toolCallsAsText, []);
+  assert.deepEqual(replayed.replayAdjustments, []);
   assert.equal(replayed.frames[1]?.message.content[0]?.type, "tool_use");
 });
 
@@ -188,4 +190,33 @@ test("injection fails instead of inserting at a shifted assistant boundary", () 
     () => injectNativeSystemMessages(twoAssistants, plan.systemInjections, plan.assistantFrames),
     /assistant messages do not match the replay/,
   );
+});
+
+test("an omitted turn before a tool change keeps injections at their boundary", () => {
+  // An edited turn left with only empty signed thinking, and one with only
+  // whitespace text, are both omitted from the replay.
+  const edited: Message = {
+    ...directAssistant(""),
+    content: [{ type: "thinking", thinking: "", thinkingSignature: "signed" }],
+    stopReason: "toolUse",
+  } as AssistantMessage;
+  const messages: Message[] = [
+    { role: "system", content: "base", toolsAdded: [alpha], timestamp: 0 },
+    { role: "user", content: "one", timestamp: 1 },
+    edited,
+    { role: "user", content: "two", timestamp: 2 },
+    directAssistant("  "),
+    { role: "user", content: "three", timestamp: 3 },
+    { role: "system", content: "beta is available", toolsAdded: [beta], timestamp: 4 },
+    directAssistant("reply"),
+    { role: "user", content: "four", timestamp: 5 },
+  ];
+  const plan = prepareNativeTranscript(messages, true);
+  assert.ok(plan);
+  const declared = new Set(getDeclaredTools(messages).map((tool) => tool.name));
+  const replayed = prepareHistory(messages.filter((message) => message.role !== "system"), declared);
+  const sent = replayed.frames.map((frame) => ({ role: frame.type, content: frame.message.content }));
+  assert.equal(plan.assistantFrames, sent.filter((message) => message.role === "assistant").length);
+  const injected = injectNativeSystemMessages(sent, plan.systemInjections, plan.assistantFrames);
+  assert.deepEqual(injected.map((message) => message.role), ["user", "system", "assistant", "user"]);
 });

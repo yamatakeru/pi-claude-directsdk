@@ -66,6 +66,7 @@ import {
   encodeCarrier,
   messageProjection,
   prepareHistory,
+  type ReplayAdjustment,
 } from "./replay.js";
 import {
   buildArgv,
@@ -262,7 +263,7 @@ async function executeCall(
   let latestRateLimit: RateLimitInfo | undefined;
   let abortRelay: (() => void) | undefined;
   let nativeContext: NativeContextReport | null = null;
-  let toolCallsReplayedAsText: string[] = [];
+  let replayAdjustments: ReplayAdjustment[] = [];
 
   const metaDiagnostic = (): AssistantMessageDiagnostic => {
     return {
@@ -277,7 +278,7 @@ async function executeCall(
         nativeContext: nativeContext
           ? { applied: [...nativeContext.applied], skipped: [...nativeContext.skipped] }
           : null,
-        toolCallsReplayedAsText: [...toolCallsReplayedAsText],
+        replayAdjustments: replayAdjustments.map((adjustment) => ({ ...adjustment })),
         nativeCostUsd,
         nativeCostNote: "estimate, not subscription charge",
         cliAvailable,
@@ -380,8 +381,9 @@ async function executeCall(
     const allowedToolNames = nativeTranscript
       ? new Set(getDeclaredTools(context.messages).map((tool) => tool.name))
       : new Set(build.toolNames);
-    const { frames, toolCallsAsText } = prepareHistory(history, allowedToolNames, cacheControl);
-    toolCallsReplayedAsText = toolCallsAsText;
+    const replay = prepareHistory(history, allowedToolNames, cacheControl);
+    const { frames } = replay;
+    replayAdjustments = replay.replayAdjustments;
     measurements.setReplayFrameCount(frames.length);
     measurements.mark("historyPrepared");
 
@@ -915,7 +917,7 @@ async function executeCall(
       if (!bare || !build.toolNames.includes(bare)) {
         throw new ClaudeNativeError(
           "native",
-          "Native returned a tool outside the current host inventory",
+          "Native returned a tool outside the active tools",
         );
       }
       const parsed = parseToolInput(raw["input"]);

@@ -6,10 +6,10 @@
  * Historical user frames use `shouldQuery: false` with zero-turn
  * acknowledgments; only the final frame may generate.
  *
- * Thinking without a valid carrier is replayed as text, and so is a tool call
- * the request does not declare, with its result. Both come from switching
- * providers or editing history. Other unsupported history is rejected, never
- * flattened into prose. Signed native
+ * Replay follows the input contract in docs/adr/0001-replay-input-contract.md:
+ * every history pi-ai's Anthropic provider can send is accepted. Parts the
+ * native form cannot represent are adjusted without losing content, and each
+ * adjustment is returned for the request's diagnostics. Signed native
  * thinking survives only inside a durable carrier attached to the Pi
  * assistant message, and only while the visible projection is unchanged.
  */
@@ -41,11 +41,41 @@ export interface CarrierProjection {
   toolCalls: Array<{ id: string; name: string; input: unknown }>;
 }
 
+/** A change replay made to the history under the input contract. */
+export type ReplayAdjustment =
+  | { kind: "turnOmitted" }
+  | { kind: "toolCallAsText"; tool: string }
+  | { kind: "toolResultAdded"; tool: string }
+  | { kind: "toolResultAsText"; tool: string }
+  | { kind: "errorImagesMoved"; tool: string }
+  | { kind: "imageOmitted" };
+
 export interface ReplayOutput {
   /** Frames in order; the last one is a nonempty user frame. */
   frames: NativeFrame[];
-  /** Tool name of each historical call replayed as text, in order. */
-  toolCallsAsText: string[];
+  /** Adjustments in history order. */
+  replayAdjustments: ReplayAdjustment[];
+}
+
+/** Result text pi-ai uses for a tool call left without a result. */
+const MISSING_RESULT_TEXT = "No result provided";
+/** Placeholder pi-ai leaves in an error result whose images move after the results. */
+const MOVED_IMAGE_TEXT = "(image attached after the tool results)";
+const OMITTED_IMAGE_TEXT = "[Image omitted: no data]";
+
+/** Whether text is worth sending: the API rejects whitespace-only text blocks. */
+function hasText(text: string): boolean {
+  return text.trim() !== "";
+}
+
+/**
+ * Whether a block of an assistant message without a matching carrier is
+ * sent. Replay and the native assistant count must agree on this.
+ */
+function sendsBlock(block: AssistantMessage["content"][number]): boolean {
+  return block.type === "toolCall" ||
+    (block.type === "text" && hasText(block.text)) ||
+    (block.type === "thinking" && hasText(block.thinking));
 }
 
 /**
@@ -56,7 +86,7 @@ export interface ReplayOutput {
 function asTextResult(heading: string, blocks: NativeContentBlock[]): NativeContentBlock[] {
   const result: NativeContentBlock[] = [{ type: "text", text: heading }];
   for (const block of blocks) {
-    if (block.type === "text" && !block.text) continue;
+    if (block.type === "text" && !hasText(block.text)) continue;
     const last = result[result.length - 1];
     if (block.type === "text" && last?.type === "text") {
       result[result.length - 1] = { ...last, text: `${last.text}\n${block.text}` };
@@ -161,16 +191,7 @@ export function replayAssistantCount(message: AssistantMessage): number {
       native.content.some((block) => block.type !== "text" || block.text !== ""),
     ).length;
   }
-  for (const block of message.content) {
-    if (
-      (block.type === "text" && block.text !== "") ||
-      (block.type === "thinking" && block.thinking !== "") ||
-      block.type === "toolCall"
-    ) {
-      return 1;
-    }
-  }
-  return 0;
+  return message.content.some(sendsBlock) ? 1 : 0;
 }
 
 /**
@@ -194,9 +215,6 @@ export function encodeCarrier(
 }
 
 function toNativeImage(data: string, mimeType: string): NativeContentBlock {
-  if (!data || !mimeType) {
-    throw replayError("Image blocks need base64 data and a media type");
-  }
   return {
     type: "image",
     source: { type: "base64", media_type: mimeType, data },
@@ -209,8 +227,8 @@ function toNativeImage(data: string, mimeType: string): NativeContentBlock {
  * @param allowedToolNames tools the request declares. In a turn without a
  *   matching carrier, a call to any other tool is replayed as text together
  *   with its result instead of as a `tool_use`. A matching carrier replays its
- *   calls unchecked. Fresh calls are validated separately against the current
- *   inventory.
+ *   calls unchecked. Fresh calls are validated separately against the active
+ *   tools.
  */
 export function prepareHistory(
   messages: Message[],
@@ -249,38 +267,58 @@ export function prepareHistory(
       frames.push({ type: "user", message: { role: "user", content: blocks } });
     }
   };
-  // Pi tool-call ID to tool name, for calls replayed as text.
-  const textToolNames = new Map<string, string>();
-  const toolCallsAsText: string[] = [];
-  // Results replayed as text wait until the native results of the same turn
-  // are in, because native tool results must lead the user message.
-  let textResults: NativeContentBlock[] = [];
-  const flushTextResults = (): void => {
-    pushUserBlocks(textResults);
-    textResults = [];
+  const replayAdjustments: ReplayAdjustment[] = [];
+  const image = (data: string, mimeType: string): NativeContentBlock => {
+    if (data && mimeType) return toNativeImage(data, mimeType);
+    replayAdjustments.push({ kind: "imageOmitted" });
+    return { type: "text", text: OMITTED_IMAGE_TEXT };
   };
+  // The user frame after an assistant turn: native tool results must lead it,
+  // so they wait in `toolResults` while everything else waits in `rest`.
+  let toolResults: NativeContentBlock[] = [];
+  let rest: NativeContentBlock[] = [];
+  const flushUser = (): void => {
+    pushUserBlocks([...toolResults, ...rest]);
+    toolResults = [];
+    rest = [];
+  };
+  // Native calls of the latest assistant turn still waiting for a result,
+  // Pi tool-call ID to tool name.
+  const openCalls = new Map<string, string>();
+  const closeCalls = (): void => {
+    for (const [id, name] of openCalls) {
+      toolResults.push({
+        type: "tool_result",
+        tool_use_id: nativeToolId(id),
+        content: MISSING_RESULT_TEXT,
+        is_error: true,
+      });
+      replayAdjustments.push({ kind: "toolResultAdded", tool: name });
+    }
+    openCalls.clear();
+  };
+  // Calls of the latest assistant turn replayed as text, Pi ID to tool name.
+  const textToolNames = new Map<string, string>();
 
   for (const message of messages) {
-    if (message.role !== "toolResult") {
-      flushTextResults();
-    }
     switch (message.role) {
       case "system":
+        // Callers remove system messages first; this guards the invariant.
         throw replayError("System messages must precede conversation history");
       case "user": {
-        const blocks: NativeContentBlock[] = [];
+        closeCalls();
         if (typeof message.content === "string") {
-          if (message.content) {
-            blocks.push({ type: "text", text: message.content });
+          if (hasText(message.content)) {
+            rest.push({ type: "text", text: message.content });
           }
         } else {
           for (const block of message.content) {
             if (block.type === "text") {
-              if (block.text) {
-                blocks.push({ type: "text", text: block.text });
+              if (hasText(block.text)) {
+                rest.push({ type: "text", text: block.text });
               }
             } else if (block.type === "image") {
-              blocks.push(toNativeImage(block.data, block.mimeType));
+              rest.push(image(block.data, block.mimeType));
             } else {
               throw replayError(
                 `Unsupported user content block: ${(block as { type: string }).type}`,
@@ -288,10 +326,11 @@ export function prepareHistory(
             }
           }
         }
-        pushUserBlocks(blocks);
         break;
       }
       case "assistant": {
+        closeCalls();
+        flushUser();
         // Results answer the calls of the turn just before them, so a reused
         // ID in a later turn never inherits an earlier text replay.
         textToolNames.clear();
@@ -311,48 +350,47 @@ export function prepareHistory(
               },
             });
           }
+          for (const block of message.content) {
+            if (block.type === "toolCall") openCalls.set(block.id, block.name);
+          }
           break;
         }
         // Without a matching carrier, preserve thinking as ordinary text.
         // Foreign or stale signatures must never become native thinking.
         const blocks: NativeContentBlock[] = [];
         for (const block of message.content) {
+          if (block.type !== "text" && block.type !== "thinking" && block.type !== "toolCall") {
+            throw replayError(
+              `Unsupported assistant content block: ${(block as { type: string }).type}`,
+            );
+          }
+          if (!sendsBlock(block)) continue;
           if (block.type === "text") {
-            if (block.text) {
-              blocks.push({ type: "text", text: block.text });
-            }
+            blocks.push({ type: "text", text: block.text });
           } else if (block.type === "thinking") {
-            if (block.thinking) {
-              blocks.push({ type: "text", text: block.thinking });
-            }
-          } else if (block.type === "toolCall") {
-            if (allowedToolNames && !allowedToolNames.has(block.name)) {
-              textToolNames.set(block.id, block.name);
-              toolCallsAsText.push(block.name);
-              blocks.push({
-                type: "text",
-                text: `[Tool call: ${block.name}, id ${block.id}] ${JSON.stringify(block.arguments ?? {})}`,
-              });
-              continue;
-            }
+            blocks.push({ type: "text", text: block.thinking });
+          } else if (allowedToolNames && !allowedToolNames.has(block.name)) {
+            textToolNames.set(block.id, block.name);
+            replayAdjustments.push({ kind: "toolCallAsText", tool: block.name });
+            blocks.push({
+              type: "text",
+              text: `[Tool call: ${block.name}, id ${block.id}] ${JSON.stringify(block.arguments ?? {})}`,
+            });
+          } else {
             blocks.push({
               type: "tool_use",
               id: nativeToolId(block.id),
               name: toolPrefixedName(block.name),
               input: deepClone(block.arguments),
             });
-          } else {
-            throw replayError(
-              `Unsupported assistant content block: ${(block as { type: string }).type}`,
-            );
+            openCalls.set(block.id, block.name);
           }
         }
         if (blocks.length === 0) {
-          // Interrupted responses can contain empty text or thinking placeholders.
-          if (message.stopReason === "error" || message.stopReason === "aborted") {
-            break;
-          }
-          throw replayError("Empty assistant message cannot be replayed");
+          // Failed and aborted responses leave empty placeholders, and edits
+          // can leave a turn with nothing visible, such as empty thinking.
+          replayAdjustments.push({ kind: "turnOmitted" });
+          break;
         }
         frames.push({
           type: "assistant",
@@ -369,30 +407,57 @@ export function prepareHistory(
           if (block.type === "text") {
             blocks.push({ type: "text", text: block.text });
           } else if (block.type === "image") {
-            blocks.push(toNativeImage(block.data, block.mimeType));
+            blocks.push(image(block.data, block.mimeType));
           } else {
             throw replayError(
               `Unsupported tool-result content block: ${(block as { type: string }).type}`,
             );
           }
         }
+        const label = message.isError ? "Tool error" : "Tool result";
         const textToolName = textToolNames.get(message.toolCallId);
         if (textToolName !== undefined) {
-          const label = message.isError ? "Tool error" : "Tool result";
-          textResults.push(...asTextResult(`[${label}: ${textToolName}, id ${message.toolCallId}]`, blocks));
+          rest.push(...asTextResult(`[${label}: ${textToolName}, id ${message.toolCallId}]`, blocks));
           break;
         }
-        pushUserBlocks([
-          {
-            type: "tool_result",
-            tool_use_id: nativeToolId(message.toolCallId),
-            content:
-              blocks.length === 1 && blocks[0]?.type === "text"
-                ? (blocks[0] as { text: string }).text
-                : blocks,
-            ...(message.isError ? { is_error: true } : {}),
-          },
-        ]);
+        if (!openCalls.has(message.toolCallId)) {
+          // No open call to answer: the call was closed by a user message,
+          // edited away, or already answered.
+          rest.push(...asTextResult(`[${label}: ${message.toolName}, id ${message.toolCallId}]`, blocks));
+          replayAdjustments.push({ kind: "toolResultAsText", tool: message.toolName });
+          break;
+        }
+        openCalls.delete(message.toolCallId);
+        let content = blocks;
+        if (message.isError && blocks.some((block) => block.type === "image")) {
+          // The API rejects an error result with anything but text.
+          // Adjacent images share one placeholder, as in pi-ai.
+          content = [];
+          let moved = false;
+          for (const block of blocks) {
+            if (block.type === "image") {
+              if (!moved) content.push({ type: "text", text: MOVED_IMAGE_TEXT });
+              moved = true;
+            } else {
+              content.push(block);
+              moved = false;
+            }
+          }
+          rest.push(
+            { type: "text", text: `Images from the error result of tool call ${message.toolCallId} (${message.toolName}):` },
+            ...blocks.filter((block) => block.type === "image"),
+          );
+          replayAdjustments.push({ kind: "errorImagesMoved", tool: message.toolName });
+        }
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: nativeToolId(message.toolCallId),
+          content:
+            content.length === 1 && content[0]?.type === "text"
+              ? (content[0] as { text: string }).text
+              : content,
+          ...(message.isError ? { is_error: true } : {}),
+        });
         break;
       }
       default:
@@ -401,7 +466,8 @@ export function prepareHistory(
         );
     }
   }
-  flushTextResults();
+  closeCalls();
+  flushUser();
 
   const last = frames[frames.length - 1];
   if (
@@ -440,5 +506,5 @@ export function prepareHistory(
       }
     }
   }
-  return { frames, toolCallsAsText };
+  return { frames, replayAdjustments };
 }

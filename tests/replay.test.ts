@@ -138,7 +138,7 @@ test("replays tool calls a request does not declare as text", () => {
       { type: "text", text: "advise" },
     ],
   ]);
-  assert.deepEqual(restored.toolCallsAsText, ["read"]);
+  assert.deepEqual(restored.replayAdjustments, [{ kind: "toolCallAsText", tool: "read" }]);
 });
 
 test("keeps declared tool calls structured next to calls replayed as text", () => {
@@ -165,7 +165,7 @@ test("keeps declared tool calls structured next to calls replayed as text", () =
     { type: "text", text: "[Tool error: gone, id call_2]\nfailed" },
     { type: "text", text: "continue" },
   ]);
-  assert.deepEqual(restored.toolCallsAsText, ["gone"]);
+  assert.deepEqual(restored.replayAdjustments, [{ kind: "toolCallAsText", tool: "gone" }]);
 });
 
 test("matches results to the calls of their own turn when an ID is reused", () => {
