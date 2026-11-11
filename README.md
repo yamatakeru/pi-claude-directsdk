@@ -25,9 +25,9 @@ Other Pi extensions that use a Claude subscription through Claude Code:
 
 ## Requirements
 
-- Pi. Verified with Pi 1.5.0.
+- Pi. Verified with Pi 1.5.2.
 - Node 20 or later for Node-based Pi installations and local development. Compiled Pi uses its bundled runtime.
-- Claude Code in the qualified range `>=2.1.263 <2.2.0` (see `QUALIFIED_CLI_RANGE` in `src/models.ts`). Verified with 2.1.318.
+- Claude Code in the qualified range `>=2.1.263 <2.2.0` (see `QUALIFIED_CLI_RANGE` in `src/models.ts`). Verified with 2.1.322.
 - A Claude paid plan. The free plan excludes the CLI.
 - A Claude Code login via `claude auth login`.
 
@@ -36,7 +36,7 @@ Other Pi extensions that use a Claude subscription through Claude Code:
 Install the verified Claude Code version, then sign in through the official CLI:
 
 ```sh
-npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.318
+npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.322
 claude auth login
 ```
 
