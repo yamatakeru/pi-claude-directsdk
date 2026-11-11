@@ -6,8 +6,10 @@
  * Historical user frames use `shouldQuery: false` with zero-turn
  * acknowledgments; only the final frame may generate.
  *
- * Thinking without a valid carrier is replayed as text. Other unsupported
- * history is rejected, never flattened into prose. Signed native
+ * Thinking without a valid carrier is replayed as text, and so is a tool call
+ * the request does not declare, with its result. Both come from switching
+ * providers or editing history. Other unsupported history is rejected, never
+ * flattened into prose. Signed native
  * thinking survives only inside a durable carrier attached to the Pi
  * assistant message, and only while the visible projection is unchanged.
  */
@@ -42,6 +44,38 @@ export interface CarrierProjection {
 export interface ReplayOutput {
   /** Frames in order; the last one is a nonempty user frame. */
   frames: NativeFrame[];
+  /** Tool name of each historical call replayed as text, in order. */
+  toolCallsAsText: string[];
+}
+
+/**
+ * A tool result replayed as user text: the heading, then the result with each
+ * run of text joined into the block before it. Empty text is dropped, since
+ * the API rejects an empty top-level text block.
+ */
+function asTextResult(heading: string, blocks: NativeContentBlock[]): NativeContentBlock[] {
+  const result: NativeContentBlock[] = [{ type: "text", text: heading }];
+  for (const block of blocks) {
+    if (block.type === "text" && !block.text) continue;
+    const last = result[result.length - 1];
+    if (block.type === "text" && last?.type === "text") {
+      result[result.length - 1] = { ...last, text: `${last.text}\n${block.text}` };
+    } else {
+      result.push(block);
+    }
+  }
+  return result;
+}
+
+/**
+ * Move tool uses to the end of an assistant message, keeping the order within
+ * each group, so a call replayed as text never follows a native tool use.
+ */
+function toolUsesLast(blocks: NativeContentBlock[]): NativeContentBlock[] {
+  return [
+    ...blocks.filter((block) => block.type !== "tool_use"),
+    ...blocks.filter((block) => block.type === "tool_use"),
+  ];
 }
 
 /**
@@ -172,9 +206,11 @@ function toNativeImage(data: string, mimeType: string): NativeContentBlock {
 /**
  * Replay Pi messages (system messages already removed) into native frames.
  *
- * @param allowedToolNames current Pi tool inventory; historic and fresh tool
- *   calls outside it are rejected because native requests only accept
- *   declared tools.
+ * @param allowedToolNames tools the request declares. In a turn without a
+ *   matching carrier, a call to any other tool is replayed as text together
+ *   with its result instead of as a `tool_use`. A matching carrier replays its
+ *   calls unchecked. Fresh calls are validated separately against the current
+ *   inventory.
  */
 export function prepareHistory(
   messages: Message[],
@@ -213,8 +249,21 @@ export function prepareHistory(
       frames.push({ type: "user", message: { role: "user", content: blocks } });
     }
   };
+  // Pi tool-call ID to tool name, for calls replayed as text.
+  const textToolNames = new Map<string, string>();
+  const toolCallsAsText: string[] = [];
+  // Results replayed as text wait until the native results of the same turn
+  // are in, because native tool results must lead the user message.
+  let textResults: NativeContentBlock[] = [];
+  const flushTextResults = (): void => {
+    pushUserBlocks(textResults);
+    textResults = [];
+  };
 
   for (const message of messages) {
+    if (message.role !== "toolResult") {
+      flushTextResults();
+    }
     switch (message.role) {
       case "system":
         throw replayError("System messages must precede conversation history");
@@ -243,6 +292,9 @@ export function prepareHistory(
         break;
       }
       case "assistant": {
+        // Results answer the calls of the turn just before them, so a reused
+        // ID in a later turn never inherits an earlier text replay.
+        textToolNames.clear();
         const carrier = readCarrier(message);
         if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
           for (const native of carrier.messages) {
@@ -275,7 +327,13 @@ export function prepareHistory(
             }
           } else if (block.type === "toolCall") {
             if (allowedToolNames && !allowedToolNames.has(block.name)) {
-              throw replayError(`Tool call outside the current inventory: ${block.name}`);
+              textToolNames.set(block.id, block.name);
+              toolCallsAsText.push(block.name);
+              blocks.push({
+                type: "text",
+                text: `[Tool call: ${block.name}, id ${block.id}] ${JSON.stringify(block.arguments ?? {})}`,
+              });
+              continue;
             }
             blocks.push({
               type: "tool_use",
@@ -296,7 +354,13 @@ export function prepareHistory(
           }
           throw replayError("Empty assistant message cannot be replayed");
         }
-        frames.push({ type: "assistant", message: { role: "assistant", content: blocks } });
+        frames.push({
+          type: "assistant",
+          message: {
+            role: "assistant",
+            content: textToolNames.size > 0 ? toolUsesLast(blocks) : blocks,
+          },
+        });
         break;
       }
       case "toolResult": {
@@ -311,6 +375,12 @@ export function prepareHistory(
               `Unsupported tool-result content block: ${(block as { type: string }).type}`,
             );
           }
+        }
+        const textToolName = textToolNames.get(message.toolCallId);
+        if (textToolName !== undefined) {
+          const label = message.isError ? "Tool error" : "Tool result";
+          textResults.push(...asTextResult(`[${label}: ${textToolName}, id ${message.toolCallId}]`, blocks));
+          break;
         }
         pushUserBlocks([
           {
@@ -331,6 +401,7 @@ export function prepareHistory(
         );
     }
   }
+  flushTextResults();
 
   const last = frames[frames.length - 1];
   if (
@@ -369,5 +440,5 @@ export function prepareHistory(
       }
     }
   }
-  return { frames };
+  return { frames, toolCallsAsText };
 }

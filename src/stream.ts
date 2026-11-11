@@ -261,6 +261,7 @@ async function executeCall(
   let latestRateLimit: RateLimitInfo | undefined;
   let abortRelay: (() => void) | undefined;
   let nativeContext: NativeContextReport | null = null;
+  let toolCallsReplayedAsText: string[] = [];
 
   const metaDiagnostic = (): AssistantMessageDiagnostic => {
     return {
@@ -275,6 +276,7 @@ async function executeCall(
         nativeContext: nativeContext
           ? { applied: [...nativeContext.applied], skipped: [...nativeContext.skipped] }
           : null,
+        toolCallsReplayedAsText: [...toolCallsReplayedAsText],
         nativeCostUsd,
         nativeCostNote: "estimate, not subscription charge",
         cliAvailable,
@@ -376,7 +378,8 @@ async function executeCall(
     const allowedToolNames = nativeTranscript
       ? new Set(getDeclaredTools(context.messages).map((tool) => tool.name))
       : new Set(build.toolNames);
-    const { frames } = prepareHistory(history, allowedToolNames, cacheControl);
+    const { frames, toolCallsAsText } = prepareHistory(history, allowedToolNames, cacheControl);
+    toolCallsReplayedAsText = toolCallsAsText;
     measurements.setReplayFrameCount(frames.length);
     measurements.mark("historyPrepared");
 
