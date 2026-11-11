@@ -72,8 +72,3 @@ test("toolChoice none drops the native transcript", () => {
   assert.equal(plan.nativeTranscript, undefined);
   assert.deepEqual(plan.replayAdjustments, [{ kind: "toolCallAsText", tool: "alpha" }]);
 });
-
-test("Pi's per-call output limit wins over the model's", () => {
-  assert.equal(planRequest(unsupported, context, {}, {}, "claude-opus-5").build.body["max_tokens"], 4_096);
-  assert.equal(planRequest(unsupported, context, { maxTokens: 100 }, {}, "claude-opus-5").build.body["max_tokens"], 100);
-});

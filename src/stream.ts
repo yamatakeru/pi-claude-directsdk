@@ -372,10 +372,7 @@ async function executeCall(
       await options.onResponse?.(providerResponse, model);
     }
 
-    // Completion gate. Tool calls publish only after the first upstream
-    // response is complete, usage and stop reason are captured, and the
-    // child has exited.
-    // Native result diagnostics can be present even when stderr is empty.
+    // The child's exit status and stderr, for errors about its result.
     const childDetail = ` (exit ${child.exitInfo?.code ?? "?"}${
       child.exitInfo?.signal ? `/${child.exitInfo.signal}` : ""
     }, stderr: ${child.stderrTail(500) || "<empty>"})`;

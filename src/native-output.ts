@@ -1,6 +1,6 @@
 /**
- * Reads the child's stdout for the queried frame and streams it to Pi as it
- * arrives. Text and thinking are published progressively; tool calls wait for
+ * Parses the child's stdout lines for the queried frame and streams them to
+ * Pi as they arrive. Text and thinking are published progressively; tool calls wait for
  * the completion gate (`src/completion.ts`), because Pi may run them only
  * after the response is complete and the child has exited.
  */
@@ -21,8 +21,6 @@ export interface ProgressiveBlock {
   /** Native content-block index from the upstream stream. */
   nativeIndex: number;
   contentIndex: number;
-  emitted: string;
-  signature: string;
   redacted: boolean;
 }
 
@@ -198,7 +196,7 @@ export class NativeOutput {
     if (block["type"] === "text") {
       const contentIndex = output.content.length;
       output.content.push({ type: "text", text: "" });
-      this.progressive.push({ kind: "text", nativeIndex: index, contentIndex, emitted: "", signature: "", redacted: false });
+      this.progressive.push({ kind: "text", nativeIndex: index, contentIndex, redacted: false });
       stream.push({ type: "text_start", contentIndex, partial: output });
     } else if (block["type"] === "thinking") {
       const contentIndex = output.content.length;
@@ -208,14 +206,7 @@ export class NativeOutput {
         thinkingSignature: typeof block["signature"] === "string" ? block["signature"] : "",
       };
       output.content.push(thinkingBlock);
-      this.progressive.push({
-        kind: "thinking",
-        nativeIndex: index,
-        contentIndex,
-        emitted: "",
-        signature: thinkingBlock.thinkingSignature ?? "",
-        redacted: false,
-      });
+      this.progressive.push({ kind: "thinking", nativeIndex: index, contentIndex, redacted: false });
       stream.push({ type: "thinking_start", contentIndex, partial: output });
     } else if (block["type"] === "redacted_thinking") {
       const contentIndex = output.content.length;
@@ -225,17 +216,10 @@ export class NativeOutput {
         thinkingSignature: typeof block["data"] === "string" ? block["data"] : "",
         redacted: true,
       });
-      this.progressive.push({
-        kind: "thinking",
-        nativeIndex: index,
-        contentIndex,
-        emitted: "[Reasoning redacted]",
-        signature: "",
-        redacted: true,
-      });
+      this.progressive.push({ kind: "thinking", nativeIndex: index, contentIndex, redacted: true });
       stream.push({ type: "thinking_start", contentIndex, partial: output });
     } else if (block["type"] === "tool_use") {
-      // Published by the completion gate from the final message.
+      // Tool calls are published from the final message (src/completion.ts).
       this.toolBlocks += 1;
     } else {
       throw new ClaudeNativeError(
@@ -258,7 +242,6 @@ export class NativeOutput {
         const block = output.content[target.contentIndex];
         if (block?.type === "text") {
           block.text += delta["text"];
-          target.emitted += delta["text"];
           this.emittedText += delta["text"];
           stream.push({
             type: "text_delta",
@@ -275,7 +258,6 @@ export class NativeOutput {
         const block = output.content[open.contentIndex];
         if (block?.type === "thinking") {
           block.thinking += delta["thinking"];
-          open.emitted += delta["thinking"];
           stream.push({
             type: "thinking_delta",
             contentIndex: open.contentIndex,
@@ -287,7 +269,6 @@ export class NativeOutput {
     } else if (delta["type"] === "signature_delta" && typeof delta["signature"] === "string") {
       const target = findProgressive(this.progressive, "thinking", index);
       if (target) {
-        target.signature += delta["signature"];
         const block = output.content[target.contentIndex];
         if (block?.type === "thinking") {
           block.thinkingSignature = (block.thinkingSignature ?? "") + delta["signature"];

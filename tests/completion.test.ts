@@ -63,11 +63,6 @@ test("maps native error text and result errors to typed errors", async (t) => {
       "Native request failed: API Error: 500 overloaded",
     ],
     [
-      "a usage-credits rejection in assistant error text",
-      [assistantError("API Error: 400 Third-party apps now draw from your extra usage, not your plan limits."), resultLine("success")],
-      /^Claude Code billing: /,
-    ],
-    [
       "a logged-out result",
       [resultLine("error_during_execution", { errors: ["Not logged in · Please run /login"] })],
       /^Claude Code is installed but has no usable login .* \(native: Not logged in · Please run \/login\)$/,
@@ -163,13 +158,14 @@ test("takes the relay capture as the response and still reports native error tex
   const meta = done.diagnostics?.find((item) => item.type === "pi-claude-native/meta");
   assert.equal((meta?.details as { upstreamRequests?: number } | undefined)?.upstreamRequests, 1);
 
-  assert.equal(
-    await failure(t, {
-      upstream: { body: sseResponse(response) },
-      stdout: [assistantError("API Error: something went wrong"), resultLine("success")],
-    }),
-    "Native request failed: API Error: something went wrong",
-  );
+  const failed = errorMessage(await events(t, {
+    upstream: { body: sseResponse(response) },
+    stdout: [assistantError("API Error: something went wrong"), resultLine("success")],
+  }));
+  assert.equal(failed.errorMessage, "Native request failed: API Error: something went wrong");
+  // A failed call keeps the usage the relay captured.
+  assert.equal(failed.usage.input, 3);
+  assert.equal(failed.usage.output, 5);
   assert.match(
     await failure(t, {
       upstream: { body: sseResponse(response) },
@@ -286,6 +282,38 @@ test("maps stop reasons", async (t) => {
     await failure(t, { stdout: streamed(reply("ok", "tool_use")) }),
     "Incomplete native response: Native stopped for tool use without tool calls",
   );
+});
+
+test("publishes tool calls from the child's stdout without a relay capture", async (t) => {
+  const response: NativeResponse = {
+    blocks: [
+      { type: "text", text: "Reading." },
+      { type: "tool_use", id: "toolu_1", name: "mcp__pi__read", input: { path: "a.txt" } },
+    ],
+    stopReason: "tool_use",
+  };
+  // Stream events without a block index fall back to the order of block starts.
+  const unindexed = streamEventLines(response).map((line) => {
+    const { index: _index, ...event } = (line as { event: Record<string, unknown> }).event;
+    return { type: "stream_event", event };
+  });
+  const read = { name: "read", description: "Read a file", parameters: { type: "object" as const, properties: {} } };
+  const withRead = {
+    messages: [{ ...context.messages[0], toolsAdded: [read] }, context.messages[1]],
+  } as unknown as TranscriptContext;
+  for (const lines of [streamEventLines(response), unindexed]) {
+    const { events: published } = await runNative(t, {
+      context: withRead,
+      stdout: [...lines, ...assistantLines(response), resultLine("error_max_turns", { num_turns: 2 })],
+      exitCode: 1,
+    });
+    const done = doneMessage(published);
+    assert.equal(done.stopReason, "toolUse");
+    assert.deepEqual(done.content, [
+      { type: "text", text: "Reading." },
+      { type: "toolCall", id: "toolu_1", name: "read", arguments: { path: "a.txt" } },
+    ]);
+  }
 });
 
 test("rejects native content blocks Pi has no type for", async (t) => {

@@ -37,12 +37,6 @@ import type {
   NativeUsage,
 } from "./types.js";
 
-/** What the gate reads from the relay. */
-export type RelayOutcome = Pick<
-  AdmissionRelay,
-  "used" | "status" | "capture" | "failure" | "denied" | "errorText"
->;
-
 /** The response the gate accepted. */
 export interface GatedResponse {
   /** The response: the relay capture, or the child's assistant lines merged. */
@@ -85,7 +79,7 @@ export function mapUsage(usage: NativeUsage | undefined): AssistantMessage["usag
  * the child's exit status and stderr for errors about its result.
  */
 export function gateResponse(options: {
-  relay: RelayOutcome;
+  relay: AdmissionRelay;
   native: NativeOutput;
   exitCode: number | null;
   childDetail: string;
@@ -190,13 +184,8 @@ export function gateResponse(options: {
   return { authoritative, result };
 }
 
-/**
- * Settle the accepted response into `output` and publish what was not
- * streamed: the rest of the text, the end of each block, and tool calls.
- * Returns the stop reason it set. Throws when the response cannot become a
- * Pi message.
- */
-export function publishResponse(options: {
+/** What publication reads and writes. */
+interface Publication {
   output: AssistantMessage;
   stream: AssistantMessageEventStream;
   model: Model<Api>;
@@ -207,7 +196,15 @@ export function publishResponse(options: {
   /** Tools whose calls the capture dropped because they were cut off at max_tokens. */
   cutCalls: string[];
   env: NodeJS.ProcessEnv;
-}): PublishedStop {
+}
+
+/**
+ * Settle the accepted response into `output` and publish what was not
+ * streamed: the rest of the text, the end of each block, and tool calls.
+ * Returns the stop reason it set. Throws when the response cannot become a
+ * Pi message.
+ */
+export function publishResponse(options: Publication): PublishedStop {
   const { output, model, native, gated: { authoritative, result }, env } = options;
   native.observedUsage = authoritative.usage ?? native.streamUsage ?? result.usage;
   const usage = mapUsage(native.observedUsage);
@@ -237,12 +234,7 @@ export function publishResponse(options: {
 type PublishedStop = "stop" | "length" | "toolUse" | "error";
 
 /** Add text the stream did not deliver, then end every streamed block. */
-function closeStreamedBlocks(options: {
-  output: AssistantMessage;
-  stream: AssistantMessageEventStream;
-  native: NativeOutput;
-  gated: GatedResponse;
-}): void {
+function closeStreamedBlocks(options: Publication): void {
   const { output, stream, native: { emittedText, progressive }, gated: { authoritative } } = options;
   const finalText = textOf(authoritative);
   if (emittedText !== finalText) {
@@ -278,12 +270,9 @@ function closeStreamedBlocks(options: {
     const final = finalThinkings[i] as
       | { thinking?: unknown; signature?: unknown }
       | undefined;
-    if (block?.type === "thinking" && !prog.redacted) {
-      if (typeof final?.signature === "string") {
-        block.thinkingSignature = final.signature;
-      } else if (prog.signature) {
-        block.thinkingSignature = prog.signature;
-      }
+    // Without a final signature the block keeps the streamed one.
+    if (block?.type === "thinking" && !prog.redacted && typeof final?.signature === "string") {
+      block.thinkingSignature = final.signature;
     }
     if (block?.type === "thinking") {
       stream.push({
@@ -309,12 +298,7 @@ function closeStreamedBlocks(options: {
 }
 
 /** Publish the response's tool calls, each to an active tool. */
-function publishToolCalls(options: {
-  output: AssistantMessage;
-  stream: AssistantMessageEventStream;
-  gated: GatedResponse;
-  toolNames: string[];
-}): ToolCall[] {
+function publishToolCalls(options: Publication): ToolCall[] {
   const { output, stream, gated: { authoritative }, toolNames } = options;
   const toolCalls: ToolCall[] = [];
   for (const block of blocksOf(authoritative, "tool_use")) {
@@ -351,24 +335,12 @@ function publishToolCalls(options: {
 }
 
 /** Map the native stop reason, failing a turn that ended without an answer. */
-function settleStop(
-  options: {
-    output: AssistantMessage;
-    model: Model<Api>;
-    native: NativeOutput;
-    gated: GatedResponse;
-    cutCalls: string[];
-  },
-  toolCallCount: number,
-): PublishedStop {
+function settleStop(options: Publication, toolCallCount: number): PublishedStop {
   const { output, model, native, gated: { authoritative }, cutCalls } = options;
   const stop = authoritative.stop_reason ??
     native.streamStop ??
-    (blocksOf(authoritative, "tool_use").length > 0 ? "tool_use" : "end_turn");
-  const mapped = mapStopReason(
-    stop,
-    stop === "refusal" ? refusalText(authoritative) : undefined,
-  );
+    (toolCallCount > 0 ? "tool_use" : "end_turn");
+  const mapped = mapStopReason(stop, stop === "refusal" ? textOf(authoritative) : undefined);
   if (mapped.stopReason === "toolUse" && toolCallCount === 0) {
     throw incompleteError("Native stopped for tool use without tool calls");
   }
@@ -455,11 +427,6 @@ function textOf(message: NativeAssistantMessage): string {
   return blocksOf(message, "text")
     .map((b) => ((b as unknown as Record<string, unknown>)["text"] as string) ?? "")
     .join("");
-}
-
-function refusalText(message: NativeAssistantMessage): string {
-  const text = textOf(message);
-  return text || "The model refused to complete the request";
 }
 
 /** Tool input as Pi arguments. Input that is not a JSON object throws, failing the call. */

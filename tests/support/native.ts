@@ -26,6 +26,8 @@ import type {
 import { PROVIDER_ID } from "../../src/models.ts";
 import { defaultDeps, streamClaudeNative, type CallDeps } from "../../src/stream.ts";
 
+const USAGE = { input_tokens: 3, output_tokens: 5 };
+
 const FAKE_CLAUDE = `#!/usr/bin/env node
 import { readFileSync, writeFileSync } from "node:fs";
 import readline from "node:readline";
@@ -38,7 +40,7 @@ writeFileSync(plan.childRequestPath, JSON.stringify({
   maxOutputTokens: process.env.CLAUDE_CODE_MAX_OUTPUT_TOKENS ?? null,
 }));
 
-const usage = { input_tokens: 3, output_tokens: 5 };
+const usage = ${JSON.stringify(USAGE)};
 const input = readline.createInterface({ input: process.stdin, crlfDelay: Infinity });
 for await (const line of input) {
   const frame = JSON.parse(line);
@@ -62,7 +64,7 @@ for await (const line of input) {
 `;
 
 /** A content block of a native assistant response. */
-export type NativeBlock =
+type NativeBlock =
   | { type: "text"; text: string }
   | { type: "thinking"; thinking: string; signature: string }
   | {
@@ -81,10 +83,8 @@ export interface NativeResponse {
   usage?: Record<string, unknown>;
 }
 
-const USAGE = { input_tokens: 3, output_tokens: 5 };
-
 /** The Messages stream events of a response, from message_start to message_stop. */
-export function nativeEvents(response: NativeResponse): unknown[] {
+function nativeEvents(response: NativeResponse): unknown[] {
   const usage = response.usage ?? USAGE;
   const events: unknown[] = [
     { type: "message_start", message: { id: "msg_fake", type: "message", role: "assistant", content: [], usage } },
@@ -176,7 +176,8 @@ export interface NativeRun {
   model?: Model<Api>;
   /** Added to the provider's environment. */
   env?: Record<string, string>;
-  options?: Partial<SimpleStreamOptions>;
+  /** Call options; the harness owns `env`. */
+  options?: Omit<Partial<SimpleStreamOptions>, "env">;
   /** The upstream's answer to the child's request. Without it the child sends none. */
   upstream?: { status?: number; contentType?: string; body: string };
   /** Messages and headers of the child's request. Its body also carries `CLAUDE_CODE_EXTRA_BODY`. */
@@ -186,7 +187,7 @@ export interface NativeRun {
   exitCode?: number;
 }
 
-export interface NativeOutcome {
+interface NativeOutcome {
   events: AssistantMessageEvent[];
   /** Requests the upstream received, after the relay. */
   upstreamRequests: Array<{ headers: IncomingHttpHeaders; body: Record<string, unknown> }>;
@@ -251,7 +252,8 @@ export async function runNative(t: test.TestContext, run: NativeRun): Promise<Na
       PI_CLAUDE_NATIVE_TEST_UPSTREAM: "1",
       PI_CLAUDE_NATIVE_COMMAND: executable,
       FAKE_PLAN: planPath,
-      ...(upstreamUrl ? { ANTHROPIC_BASE_URL: upstreamUrl } : {}),
+      // Empty unless the run has an upstream, so a value in the shell cannot leak in.
+      ANTHROPIC_BASE_URL: upstreamUrl ?? "",
       ...run.env,
     },
   }, deps);
