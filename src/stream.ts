@@ -35,6 +35,7 @@ import type {
   TranscriptContext,
 } from "@earendil-works/pi-ai/compat";
 import { AdmissionRelay, formatRelayFailure } from "./admission.js";
+import { replaceDocsSections } from "./docs-section.js";
 import {
   enforceUsageCredits,
   rateLimitDiagnostic,
@@ -345,6 +346,7 @@ async function executeCall(
     const requestNativeModelId = nativeModel(model.id, model.contextWindow);
     nativeModelId = requestNativeModelId;
     const cacheControl = replayCacheControl(mergedEnv, requestNativeModelId);
+    context = { ...context, messages: replaceDocsSections(context.messages) };
     const nativeTranscript = options.toolChoice === "none"
       ? undefined
       : prepareNativeTranscript(

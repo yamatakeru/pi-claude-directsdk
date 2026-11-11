@@ -1,28 +1,9 @@
 /** Claude CLI supplies authentication; Pi owns the transcript and tools. */
 import { normalizeContext, registerApiProvider, unregisterApiProviders } from "@earendil-works/pi-ai/compat";
 import type { SimpleStreamOptions } from "@earendil-works/pi-ai/compat";
-import { getDocsPath, getExamplesPath, getReadmePath, type ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
+import { DOCS_SECTION } from "../../src/docs-section.js";
 import { createClaudeNativeProvider, PROVIDER_ID, streamSimple } from "../../src/provider.js";
-
-/**
- * Pi's default docs section is rejected as third-party app usage when the child reports a
- * client label other than Claude Code's SDK default. This sends the same guidance as prose,
- * without Pi's list of topics and doc paths, which is what triggers the rejection.
- */
-const DOCS_SECTION =
-  "This session runs inside Pi. If the user asks about Pi itself, for example its SDK, extensions, themes, " +
-  "skills, or terminal UI, look the answer up in Pi's own files instead of guessing; other tasks do not need them. " +
-  `The README is at ${getReadmePath()}, the guides are under ${getDocsPath()}, ` +
-  `and runnable samples of extensions, custom tools, and SDK use are under ${getExamplesPath()}. ` +
-  "Relative paths such as docs/... or examples/... point into those folders, not into the user's project. " +
-  "Open docs/docs.json first: it lists every guide by title, covering subjects like prompt templates, " +
-  "TUI components, keybindings, SDK integrations, custom providers, adding models, packages, " +
-  "environment variables, MCP servers, and codemode. " +
-  "The codemode guide also covers classifiers, image models, and other models that do not chat. " +
-  `For extensions, also read the matching sample under ${getExamplesPath()}/extensions, ` +
-  "since the extension guide treats those samples as the implementation reference. " +
-  "Before building anything for Pi, read the guides and samples that apply, read each guide to the end, " +
-  "and follow the links it gives to related guides.";
 
 export default function (pi: ExtensionAPI) {
   let report = (message: string): void => { console.error(message); };
@@ -38,6 +19,8 @@ export default function (pi: ExtensionAPI) {
     streamSimple: (model, context, options) => streamSimple(model, normalizeContext(context), options),
   }, PROVIDER_ID);
   // Only this transport reports a custom client label, so other providers keep Pi's prompt.
+  // The provider also replaces the section in what it sends (src/docs-section.ts); this keeps
+  // Pi's rendered prompt, which extensions can pass to a side request as text, free of it.
   pi.on("before_agent_start", (event, ctx) => {
     if (ctx.model?.provider !== PROVIDER_ID) return;
     const options = event.systemPromptOptions;
