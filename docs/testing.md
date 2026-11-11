@@ -81,7 +81,7 @@ The harness starts a real Pi session and requests a short greeting from Haiku 5.
 python3 scripts/verify.py session --paid --session /absolute/path/to/session.jsonl
 ```
 
-The harness copies every session entry into a private temporary snapshot. Pi forks that snapshot and submits the verification prompt. It does not filter errors, replace tools, remove thinking, shorten history, or write to the original session. The user’s working directory, credential values, tool inventory, and other extensions remain in effect. Configuration and credentials are copied privately, not written back.
+The harness copies every session entry into a private temporary snapshot. Pi forks that snapshot and submits the verification prompt. It does not filter errors, replace tools, remove thinking, shorten history, or write to the original session. The user’s working directory, credential values, tools, and other extensions remain in effect. Configuration and credentials are copied privately, not written back.
 
 This is the primary regression check for provider switching and accumulated session history. A fresh request passing does not establish that an existing session works.
 
@@ -116,7 +116,7 @@ The summary reports wall time, token usage, cache-read share, phase timings, rep
 - `--timeout SECONDS` bounds the scenario. The default is 120 seconds.
 - `--paid` explicitly approves real model requests. Without it, paid scenarios refuse to run.
 
-Run from the same project directory as the original session. Existing tool permissions and extension behavior still apply. The verification prompt asks the model not to call tools, but the harness does not replace the user’s tool inventory.
+Run from the same project directory as the original session. Existing tool permissions and extension behavior still apply. The verification prompt asks the model not to call tools, but the harness does not replace the user’s tools.
 
 Private artifacts go to `/tmp/pi-claude-native-verify-*`. The harness removes copied configuration, credentials, input snapshots, and Pi-generated test sessions after the run. It retains summaries and bounded native error diagnostics. It does not save model responses, credentials, or successful native transcript records. Native errors can quote input fragments; inspect the diagnostics before sharing them.
 

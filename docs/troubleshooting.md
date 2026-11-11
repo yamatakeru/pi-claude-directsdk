@@ -14,7 +14,7 @@
 | Model excluded from catalog | metadata | Read the warning for the missing field. Update Claude Code if picker metadata is incomplete. Unverified limits and prices are never guessed. |
 | Optional features left off | metadata | Anthropic's mid-conversation page could not be read or no longer names its models. Models stay usable, but a tool change misses the prompt cache. Check the page; if its wording changed, `toolChangeModels` in `src/web-catalog.ts` needs the new sentence. |
 | No Claude Native models on a fresh offline install | catalog | Connect once, start interactive Pi, and open `/model`. Wait for refresh before selecting a model from the command line. |
-| History cannot be replayed | `replay` | Compact or restart the session. Common causes: an empty assistant message, assistant prefill, or an unsupported content block. |
+| History cannot be replayed | `replay` | Compact or restart the session. Causes: assistant prefill (a history ending in an assistant turn without tool calls), a tool call with an empty ID, or an unsupported content block. |
 | Prompt is too long | `native` | Read the reported route and context window. Remove stale `contextWindow` overrides in `models.json` to use verified limits, or compact the session. |
 | Native request failed | `native` | Read the native detail in the message. |
 | `<model> spent its whole output budget on thinking and returned no answer` | `native` | The turn spent its whole output budget on thinking. Lower the thinking level or switch models, then retry. |
@@ -63,14 +63,14 @@ The qualified CLI range is `>=2.1.263 <2.2.0` (`QUALIFIED_CLI_RANGE` in `src/mod
 
 Switching providers does not require compaction or a restart. Thinking without a matching native carrier is replayed as ordinary assistant text. This also applies after editing an assistant message that carried signed thinking.
 
-For other unsupported history, compact or restart the session. Do not hand-edit session files to reattach native blocks. A stale signature is never attached to rewritten content by design.
+Replay accepts every history pi-ai's Anthropic provider can send ([ADR 0001](adr/0001-replay-input-contract.md)), and lists each adjustment in the meta diagnostic (`replayAdjustments`). For a history it still rejects, such as one ending in an assistant turn without tool calls, compact or restart the session. Do not hand-edit session files to reattach native blocks. A stale signature is never attached to rewritten content by design.
 
 ## Tool changes
 
-Models whose built-in metadata supports mid-conversation tool changes replay `tool_addition` and `tool_removal` blocks at assistant boundaries. A tool used earlier in the conversation can be removed from the current inventory without failing replay. Pi still validates the model response against the current inventory, so a removed tool is never executed.
+Models whose built-in metadata supports mid-conversation tool changes replay `tool_addition` and `tool_removal` blocks at assistant boundaries. A tool used earlier in the conversation can be removed from the active tools without failing replay. Pi still validates the model response against the active tools, so a removed tool is never executed.
 
 Unsupported models keep the collapsed system message and current tool set. On those models, an earlier call to a tool that is no longer in the current set is replayed as text with its result instead of failing replay.
 
 ## Cross-provider history
 
-The provider replays foreign thinking as ordinary text and maps incompatible tool-call IDs together with their result references. A tool call the request does not declare, in a turn that does not match a native carrier (for example another provider's call in a side request that sends the history with no tools), is replayed as text with its result. Failed or aborted responses with empty text or thinking placeholders do not block the next request. The stored session remains unchanged.
+The provider replays foreign thinking as ordinary text and maps incompatible tool-call IDs together with their result references. A tool call the request does not declare, in a turn that does not match a native carrier (for example another provider's call in a side request that sends the history with no tools), is replayed as text with its result. Assistant turns with nothing left to send, from failed or aborted responses or from edits, are omitted. A tool call left without a result gets the result `No result provided`. The stored session remains unchanged.
