@@ -2,6 +2,21 @@
 
 Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
+## [0.8.0] - 2026-11-11
+
+Checked with Pi 1.5.2 and Claude Code 2.1.322 (a fresh request, and a session written by another provider continued on Claude Native). Replay now accepts every history that Pi's own Anthropic provider can send. Switching models during a session, extensions that edit the history, and side requests such as an advisor no longer fail replay.
+
+### Changed
+
+- Parts of a history that Claude cannot take natively are adjusted without losing content, and each adjustment is listed under `replayAdjustments` in the `pi-claude-native/meta` diagnostic. The rule is recorded in [ADR 0001](docs/adr/0001-replay-input-contract.md) ([#76](https://github.com/yamatakeru/pi-claude-native/issues/76), [#78](https://github.com/yamatakeru/pi-claude-native/pull/78)).
+
+### Fixed
+
+- A request that declares fewer tools than the history used no longer fails with "Tool call outside the current inventory". This covers a tool-less side request, a session that started on another provider, and a removed tool on a model without mid-conversation tool changes. Those calls and their results are replayed as text ([#72](https://github.com/yamatakeru/pi-claude-native/issues/72), [#73](https://github.com/yamatakeru/pi-claude-native/pull/73)).
+- An assistant turn with nothing left to send is omitted instead of failing with "Empty assistant message cannot be replayed". For example, an advisor called with no text before it leaves such a turn ([#74](https://github.com/yamatakeru/pi-claude-native/issues/74), [#78](https://github.com/yamatakeru/pi-claude-native/pull/78)).
+- A tool call left without a result, as after a failed or interrupted turn, gets the result `No result provided` instead of making the request invalid. A result that arrives after a user message is kept as text ([#75](https://github.com/yamatakeru/pi-claude-native/issues/75), [#78](https://github.com/yamatakeru/pi-claude-native/pull/78)).
+- Pi's docs section is replaced in every request, including sessions that started on another provider and side requests made while another model is active ([#28](https://github.com/yamatakeru/pi-claude-native/issues/28), [#77](https://github.com/yamatakeru/pi-claude-native/pull/77)).
+
 ## [0.7.1] - 2026-11-10
 
 ### Fixed
