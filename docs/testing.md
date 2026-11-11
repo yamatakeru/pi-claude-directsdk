@@ -130,7 +130,7 @@ npm run build
 npm test
 ```
 
-The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including fixture tests for the request rewrites and relay failure handling, grouped by issue. Branch and pull request CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
+The first two commands check types and compilation. `npm test` runs the offline regression suite on Node 22, including fixture tests for the request rewrites and relay failure handling, grouped by issue. End-to-end provider tests run each call through a fake `claude` child and an optional loopback upstream from `tests/support/native.ts`. Branch and pull request CI run all three checks. Paid runtime verification stays local because CI is not the user’s Pi installation and has no approved subscription credentials.
 
 The permanent harness does not yet exercise an in-process `/reload`, forced subprocess stalls, cancellation, or an explicit tool round trip. Temporary checks described above do not extend the supported scenarios.
 

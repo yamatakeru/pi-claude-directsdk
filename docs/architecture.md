@@ -46,7 +46,9 @@ Rules:
 - Signed native thinking survives only inside a durable carrier (`pi-claude-native/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly. A restored frame keeps the carrier's `model`: the CLI drops thinking from an assistant message without one, as written by another model (see [transport-measurements.md](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
 - Models with verified mid-conversation tool-change support keep later system messages. The initial system message supplies the system prompt and initial tools. Later tool additions and removals are injected as native system content at their assistant boundaries, and historical calls to any tool declared earlier in the transcript remain replayable. Response validation still uses the active tools.
 
-### Request assembly (`src/request.ts`)
+### Request assembly (`src/request-plan.ts`, `src/request.ts`)
+
+`planRequest` decides what one call sends without touching files, processes, or the network: the system prompt, the request body, the native transcript plan, and the replay frames. `src/request.ts` builds the parts.
 
 Before the request is built, every `docs` section in the transcript's system messages is replaced with Claude Native's prose version (`src/docs-section.ts`, see [Plan usage metering](usage.md#plan-usage-metering)), whichever provider was active when Pi recorded it. A later update that the replacement leaves unchanged is dropped, so switching providers adds no mid-conversation section update.
 
@@ -110,9 +112,9 @@ On POSIX, the provider verifies that its cache root and child directory belong t
 
 The first request after this directory change can miss a previously cached native prefix. A stable path removes this source of cache invalidation; legitimate Pi prompt and tool changes still affect reuse. Linux verification resumed the same session in a new Pi process and measured 99.84% cache-read share with stable Pi prompt and tool hashes. See [transport-measurements.md](transport-measurements.md#linux-lifecycle-and-cross-restart-verification).
 
-### Stream conversion (`src/stream.ts`)
+### Stream conversion (`src/stream.ts`, `src/native-output.ts`, `src/completion.ts`)
 
-The provider converts child stdout `stream-json` to Pi events. Native result errors are preserved even when stderr is empty. Prompt-length errors report the selected route and configured context window. Native tool calls are published only after the first upstream response is complete and the child has exited. A tool call whose streamed arguments are not valid JSON when the response stops at `max_tokens` is dropped, never run with guessed arguments; the turn ends as `length`. Anthropic does not validate streamed tool input, so a cut-off reply can end inside one. Usage and stop reason come from the authoritative native usage. Incomplete native or upstream responses produce `incomplete` or `upstream` errors.
+The provider converts child stdout `stream-json` to Pi events. `src/stream.ts` runs the call from setup to cleanup. `src/native-output.ts` publishes text and thinking as the child prints them. `src/completion.ts` is the completion gate: it chooses the response, from the relay capture or the child's stdout, maps failures to typed errors, and then publishes the rest of the message and its tool calls. Native result errors are preserved even when stderr is empty. Prompt-length errors report the selected route and configured context window. Native tool calls are published only after the first upstream response is complete and the child has exited. A tool call whose streamed arguments are not valid JSON when the response stops at `max_tokens` is dropped, never run with guessed arguments; the turn ends as `length`. Anthropic does not validate streamed tool input, so a cut-off reply can end inside one. Usage and stop reason come from the authoritative native usage. Incomplete native or upstream responses produce `incomplete` or `upstream` errors.
 
 The provider reads `rate_limit_event.rate_limit_info`. If the authoritative response reports usage-credit overage and `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS` is not enabled, the turn fails with a non-retryable `billing` error after usage is captured. Completed and failed turns carry a `pi-claude-native/rate-limit` diagnostic. Upstream usage-credit rejection text maps to the same error.
 
