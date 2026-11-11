@@ -30,18 +30,21 @@ The extension registers a complete Pi provider with id `claude-native` and an in
 
 Pi owns the transcript. Each call replays prior assistant, user, and tool-result frames in native `stream-json` form through a fresh child.
 
+Replay follows the input contract in [ADR 0001](adr/0001-replay-input-contract.md): it accepts every history that pi-ai's Anthropic provider can send. Parts the native form cannot represent are adjusted without losing content, and each adjustment is listed in the meta diagnostic (`replayAdjustments`).
+
 Rules:
 
 - Historical user frames carry `shouldQuery: false` and expect a zero-turn acknowledgment. Only the final frame may generate.
-- The last frame must be a nonempty user or tool-result message. Assistant prefill is unsupported.
-- Empty text or thinking placeholders from failed and aborted responses are omitted. Nonempty history remains intact.
+- An assistant turn with nothing left to send is omitted (`turnOmitted`). Such turns come from failed and aborted responses, and from edits that leave only empty text or thinking. Whitespace-only text is never sent.
+- A tool call without a result gets the result `No result provided`, marked as an error (`toolResultAdded`). It is added after the call's turn: before the next user message, before the next assistant turn, or at the end of the history.
 - Tool-call IDs that Claude cannot accept are mapped to valid native IDs. Tool results use the same mapping. Stored Pi IDs remain unchanged.
 - Thinking without a matching native carrier is replayed as ordinary assistant text. This allows switching providers during a session.
-- A historical tool call outside the tools the request declares, outside a matching carrier, is replayed as assistant text (`[Tool call: <name>, id <id>] <arguments>`), and its result as user text (`[Tool result: <name>, id <id>]` or `[Tool error: …]`) after the native tool results of the same turn. A result matches only a call of the turn just before it. Such calls come from switching providers, editing history, or a side request that declares no tools. Calls to declared tools stay native, and the meta diagnostic lists the replayed tool names (`toolCallsReplayedAsText`).
-  - Alternatives not taken: rejecting such history fails side requests and provider switches over content that is still meaningful; sending the call as a native `tool_use` without a declaration depends on upstream accepting it, which is unverified when other tools are declared; declaring stub tools would make the tools callable in a request meant to have none.
-- Other unsupported history is rejected with a `replay` error, never flattened into prose.
+- A historical call to a tool outside the declared tools, in a turn without a matching carrier, is replayed as assistant text (`[Tool call: <name>, id <id>] <arguments>`; `toolCallAsText`), and its result as user text (`[Tool result: <name>, id <id>]` or `[Tool error: …]`). Calls to declared tools stay native.
+- A tool result without an open call, for example one that arrives after a user message, is replayed as user text in the same form (`toolResultAsText`).
+- In each user frame, native tool results come first, then added results, then content replayed as text, then user content, in history order. Images from an error tool result follow the turn's tool results, and a placeholder takes their place in the result (`errorImagesMoved`). An image without data becomes the text `[Image omitted: no data]` (`imageOmitted`).
+- The history must not end in an assistant turn without tool calls: assistant prefill is unsupported. Replay also rejects tool calls with empty IDs and content types outside Pi's message types.
 - Signed native thinking survives only inside a durable carrier (`pi-claude-native/native`) attached to the Pi assistant message. The carrier is restored only when the visible projection (text, thinking, tool calls) still matches. Any edit drops the native blocks. Session files persist the carrier, so resumed turns replay exactly. A restored frame keeps the carrier's `model`: the CLI drops thinking from an assistant message without one, as written by another model (see [transport-measurements.md](transport-measurements.md#replayed-thinking-and-the-assistant-model)).
-- Models with verified mid-conversation tool-change support keep later system messages. The initial system message supplies the system prompt and initial tools. Later tool additions and removals are injected as native system content at their assistant boundaries, and historical calls to any tool declared earlier in the transcript remain replayable. Response validation still uses the current Pi inventory.
+- Models with verified mid-conversation tool-change support keep later system messages. The initial system message supplies the system prompt and initial tools. Later tool additions and removals are injected as native system content at their assistant boundaries, and historical calls to any tool declared earlier in the transcript remain replayable. Response validation still uses the active tools.
 
 ### Request assembly (`src/request.ts`)
 
@@ -164,4 +167,4 @@ Pi owns tool execution. The native child advertises Pi tools through the inert M
 - Only `tool_choice` `auto` and `none` are supported.
 - Constrained decoding is not enforced. Grammar and best-effort (`strict: "prefer"`) annotations fall back to normal JSON-schema tool calling. Required strict (`strict: "require"`) stays rejected. Malformed native tool input still fails downstream.
 - Native tool calls reach Pi only after the first upstream response is complete and the child has exited.
-- On models with verified mid-conversation tool-change support, historical calls to tools declared earlier in the transcript are replayable, including tools removed from the current inventory. Pi never executes a tool outside the current inventory.
+- On models with verified mid-conversation tool-change support, historical calls to tools declared earlier in the transcript are replayed natively, including tools no longer active. Pi never executes a tool outside the active tools.
