@@ -211,6 +211,26 @@ test("adds a text result for a call replayed as text and left without one", () =
   ]);
 });
 
+test("records a late result for a call replayed as text and already closed", () => {
+  const replayed = prepareHistory([
+    user("go"),
+    turn([call("c1", "gone")]),
+    user("next"),
+    result("c1", [{ type: "text", text: "late" }], false, "gone"),
+  ], declared);
+
+  assert.deepEqual(shape(replayed.frames)[2], [
+    "text:[Tool error: gone, id c1]\nNo result provided",
+    "text:next",
+    "text:[Tool result: gone, id c1]\nlate",
+  ]);
+  assert.deepEqual(replayed.replayAdjustments, [
+    { kind: "toolCallAsText", tool: "gone" },
+    { kind: "toolResultAdded", tool: "gone" },
+    { kind: "toolResultAsText", tool: "gone" },
+  ]);
+});
+
 test("accepts a tool-less request over a history ending in tool calls", () => {
   const replayed = prepareHistory([
     user("go"),
@@ -277,6 +297,10 @@ test("still rejects assistant prefill, empty tool-call IDs, and unknown content"
   );
   assert.throws(
     () => prepareHistory([user("go"), turn([call("")]), result("", [{ type: "text", text: "x" }])], declared),
+    /Tool-call IDs must be nonempty/,
+  );
+  assert.throws(
+    () => prepareHistory([user("go"), turn([call("", "gone")]), user("next")], declared),
     /Tool-call IDs must be nonempty/,
   );
   assert.throws(

@@ -14,7 +14,7 @@
 | Model excluded from catalog | metadata | Read the warning for the missing field. Update Claude Code if picker metadata is incomplete. Unverified limits and prices are never guessed. |
 | Optional features left off | metadata | Anthropic's mid-conversation page could not be read or no longer names its models. Models stay usable, but a tool change misses the prompt cache. Check the page; if its wording changed, `toolChangeModels` in `src/web-catalog.ts` needs the new sentence. |
 | No Claude Native models on a fresh offline install | catalog | Connect once, start interactive Pi, and open `/model`. Wait for refresh before selecting a model from the command line. |
-| History cannot be replayed | `replay` | Compact or restart the session. Common causes: an empty assistant message, assistant prefill, or an unsupported content block. |
+| History cannot be replayed | `replay` | Compact or restart the session. Causes: assistant prefill (a history ending in an assistant turn without tool calls), a tool call with an empty ID, or an unsupported content block. |
 | Prompt is too long | `native` | Read the reported route and context window. Remove stale `contextWindow` overrides in `models.json` to use verified limits, or compact the session. |
 | Native request failed | `native` | Read the native detail in the message. |
 | `<model> spent its whole output budget on thinking and returned no answer` | `native` | The turn spent its whole output budget on thinking. Lower the thinking level or switch models, then retry. |

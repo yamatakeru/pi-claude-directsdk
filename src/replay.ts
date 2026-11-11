@@ -380,6 +380,9 @@ export function prepareHistory(
             blocks.push({ type: "text", text: block.text });
           } else if (block.type === "thinking") {
             blocks.push({ type: "text", text: block.thinking });
+          } else if (!block.id) {
+            // Without an ID, a call cannot be paired with its result.
+            throw replayError("Tool-call IDs must be nonempty");
           } else if (allowedToolNames && !allowedToolNames.has(block.name)) {
             textToolNames.set(block.id, block.name);
             openCalls.set(block.id, { name: block.name, asText: true });
@@ -438,7 +441,7 @@ export function prepareHistory(
             `[${label}: ${textToolName ?? message.toolName}, id ${message.toolCallId}]`,
             blocks,
           ));
-          if (textToolName === undefined) {
+          if (!open) {
             replayAdjustments.push({ kind: "toolResultAsText", tool: message.toolName });
           }
           break;
