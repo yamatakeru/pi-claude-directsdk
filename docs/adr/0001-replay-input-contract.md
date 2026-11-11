@@ -16,9 +16,10 @@ These options were considered for historical tool calls the request does not dec
 ## Consequences
 
 - Adjustments follow pi-ai where pi-ai has a rule:
-  - A tool call without a result gets the result `No result provided`, marked as an error, before the next user message, the next assistant turn, or the end of the history.
+  - A tool call without a result gets the result `No result provided`, marked as an error, before the next user message, the next assistant turn, or the end of the history. A call replayed as text gets it as text.
   - Images from an error result move after the turn's tool results.
   - An assistant turn with nothing left to send is omitted.
+- Replay keeps more than pi-ai in one place. pi-ai drops failed and aborted assistant turns; replay keeps whatever content they have and closes their calls as above, so the content is not lost.
 - Where pi-ai would send a request upstream rejects, replay goes further and keeps the content as labeled text: a tool result without an open call, for example one that arrives after a user message (#75). These rejections by upstream are inferred from pi-ai's own workarounds, not observed.
 - Adding a missing tool result and remapping a tool-call ID do not count as describing an event that did not happen. The first only states that a result is missing; the second only changes an identifier.
 - Replay still rejects these histories:

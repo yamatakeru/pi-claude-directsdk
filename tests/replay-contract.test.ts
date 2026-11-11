@@ -193,7 +193,7 @@ test("replays a result without an open call as text", () => {
   assert.deepEqual(replayed.replayAdjustments, [{ kind: "toolResultAsText", tool: "read" }]);
 });
 
-test("does not add a result for a call replayed as text", () => {
+test("adds a text result for a call replayed as text and left without one", () => {
   const replayed = prepareHistory([
     user("go"),
     turn([call("c1", "gone")]),
@@ -203,9 +203,28 @@ test("does not add a result for a call replayed as text", () => {
   assert.deepEqual(shape(replayed.frames), [
     ["text:go"],
     ["text:[Tool call: gone, id c1] {}"],
-    ["text:next"],
+    ["text:[Tool error: gone, id c1]\nNo result provided", "text:next"],
   ]);
-  assert.deepEqual(replayed.replayAdjustments, [{ kind: "toolCallAsText", tool: "gone" }]);
+  assert.deepEqual(replayed.replayAdjustments, [
+    { kind: "toolCallAsText", tool: "gone" },
+    { kind: "toolResultAdded", tool: "gone" },
+  ]);
+});
+
+test("accepts a tool-less request over a history ending in tool calls", () => {
+  const replayed = prepareHistory([
+    user("go"),
+    turn([{ type: "text", text: "checking" }, call("c1"), call("c2", "gone")]),
+  ], new Set());
+
+  assert.deepEqual(shape(replayed.frames), [
+    ["text:go"],
+    ["text:checking", "text:[Tool call: read, id c1] {}", "text:[Tool call: gone, id c2] {}"],
+    [
+      "text:[Tool error: read, id c1]\nNo result provided",
+      "text:[Tool error: gone, id c2]\nNo result provided",
+    ],
+  ]);
 });
 
 test("moves images from an error result after the turn's tool results", () => {

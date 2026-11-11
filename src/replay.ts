@@ -179,14 +179,22 @@ function readCarrier(message: AssistantMessage): {
   };
 }
 
+/** The message's carrier, when its visible projection still matches. */
+function matchingCarrier(message: AssistantMessage): ReturnType<typeof readCarrier> {
+  const carrier = readCarrier(message);
+  return carrier && projectionsEqual(carrier.projection, messageProjection(message))
+    ? carrier
+    : null;
+}
+
 /**
  * Number of native assistant frames this Pi message replays as. Carrier
  * messages can contain more than one native assistant message. The CLI drops
  * an assistant frame that holds only empty text, so such frames do not count.
  */
 export function replayAssistantCount(message: AssistantMessage): number {
-  const carrier = readCarrier(message);
-  if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
+  const carrier = matchingCarrier(message);
+  if (carrier) {
     return carrier.messages.filter((native) =>
       native.content.some((block) => block.type !== "text" || block.text !== ""),
     ).length;
@@ -277,25 +285,29 @@ export function prepareHistory(
   // so they wait in `toolResults` while everything else waits in `rest`.
   let toolResults: NativeContentBlock[] = [];
   let rest: NativeContentBlock[] = [];
-  const flushUser = (): void => {
-    pushUserBlocks([...toolResults, ...rest]);
-    toolResults = [];
-    rest = [];
-  };
-  // Native calls of the latest assistant turn still waiting for a result,
-  // Pi tool-call ID to tool name.
-  const openCalls = new Map<string, string>();
+  // Calls of the latest assistant turn still waiting for a result, by Pi ID.
+  const openCalls = new Map<string, { name: string; asText: boolean }>();
   const closeCalls = (): void => {
-    for (const [id, name] of openCalls) {
-      toolResults.push({
-        type: "tool_result",
-        tool_use_id: nativeToolId(id),
-        content: MISSING_RESULT_TEXT,
-        is_error: true,
-      });
+    for (const [id, { name, asText }] of openCalls) {
+      if (asText) {
+        rest.push({ type: "text", text: `[Tool error: ${name}, id ${id}]\n${MISSING_RESULT_TEXT}` });
+      } else {
+        toolResults.push({
+          type: "tool_result",
+          tool_use_id: nativeToolId(id),
+          content: MISSING_RESULT_TEXT,
+          is_error: true,
+        });
+      }
       replayAdjustments.push({ kind: "toolResultAdded", tool: name });
     }
     openCalls.clear();
+  };
+  const flushUser = (): void => {
+    closeCalls();
+    pushUserBlocks([...toolResults, ...rest]);
+    toolResults = [];
+    rest = [];
   };
   // Calls of the latest assistant turn replayed as text, Pi ID to tool name.
   const textToolNames = new Map<string, string>();
@@ -329,13 +341,12 @@ export function prepareHistory(
         break;
       }
       case "assistant": {
-        closeCalls();
         flushUser();
         // Results answer the calls of the turn just before them, so a reused
         // ID in a later turn never inherits an earlier text replay.
         textToolNames.clear();
-        const carrier = readCarrier(message);
-        if (carrier && projectionsEqual(carrier.projection, messageProjection(message))) {
+        const carrier = matchingCarrier(message);
+        if (carrier) {
           for (const native of carrier.messages) {
             frames.push({
               type: "assistant",
@@ -351,7 +362,7 @@ export function prepareHistory(
             });
           }
           for (const block of message.content) {
-            if (block.type === "toolCall") openCalls.set(block.id, block.name);
+            if (block.type === "toolCall") openCalls.set(block.id, { name: block.name, asText: false });
           }
           break;
         }
@@ -371,6 +382,7 @@ export function prepareHistory(
             blocks.push({ type: "text", text: block.thinking });
           } else if (allowedToolNames && !allowedToolNames.has(block.name)) {
             textToolNames.set(block.id, block.name);
+            openCalls.set(block.id, { name: block.name, asText: true });
             replayAdjustments.push({ kind: "toolCallAsText", tool: block.name });
             blocks.push({
               type: "text",
@@ -383,7 +395,7 @@ export function prepareHistory(
               name: toolPrefixedName(block.name),
               input: deepClone(block.arguments),
             });
-            openCalls.set(block.id, block.name);
+            openCalls.set(block.id, { name: block.name, asText: false });
           }
         }
         if (blocks.length === 0) {
@@ -415,19 +427,22 @@ export function prepareHistory(
           }
         }
         const label = message.isError ? "Tool error" : "Tool result";
-        const textToolName = textToolNames.get(message.toolCallId);
-        if (textToolName !== undefined) {
-          rest.push(...asTextResult(`[${label}: ${textToolName}, id ${message.toolCallId}]`, blocks));
-          break;
-        }
-        if (!openCalls.has(message.toolCallId)) {
-          // No open call to answer: the call was closed by a user message,
-          // edited away, or already answered.
-          rest.push(...asTextResult(`[${label}: ${message.toolName}, id ${message.toolCallId}]`, blocks));
-          replayAdjustments.push({ kind: "toolResultAsText", tool: message.toolName });
-          break;
-        }
+        const open = openCalls.get(message.toolCallId);
         openCalls.delete(message.toolCallId);
+        if (!open || open.asText) {
+          // A call replayed as text gets its result as text. So does a result
+          // without an open call: closed by a user message, edited away, or
+          // already answered.
+          const textToolName = textToolNames.get(message.toolCallId);
+          rest.push(...asTextResult(
+            `[${label}: ${textToolName ?? message.toolName}, id ${message.toolCallId}]`,
+            blocks,
+          ));
+          if (textToolName === undefined) {
+            replayAdjustments.push({ kind: "toolResultAsText", tool: message.toolName });
+          }
+          break;
+        }
         let content = blocks;
         if (message.isError && blocks.some((block) => block.type === "image")) {
           // The API rejects an error result with anything but text.
@@ -466,7 +481,6 @@ export function prepareHistory(
         );
     }
   }
-  closeCalls();
   flushUser();
 
   const last = frames[frames.length - 1];
@@ -500,7 +514,7 @@ export function prepareHistory(
       if (frame?.type !== "user") continue;
       for (let j = frame.message.content.length - 1; j >= 0; j--) {
         const block = frame.message.content[j];
-        if (!block || (block.type === "text" && block.text.trim() === "")) continue;
+        if (!block || (block.type === "text" && !hasText(block.text))) continue;
         frame.message.content[j] = { ...block, cache_control: { ...cacheControl } };
         break anchor;
       }

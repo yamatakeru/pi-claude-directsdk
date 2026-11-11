@@ -36,7 +36,7 @@ Rules:
 
 - Historical user frames carry `shouldQuery: false` and expect a zero-turn acknowledgment. Only the final frame may generate.
 - An assistant turn with nothing left to send is omitted (`turnOmitted`). Such turns come from failed and aborted responses, and from edits that leave only empty text or thinking. Whitespace-only text is never sent.
-- A tool call without a result gets the result `No result provided`, marked as an error (`toolResultAdded`). It is added after the call's turn: before the next user message, before the next assistant turn, or at the end of the history.
+- A tool call without a result gets the result `No result provided`, marked as an error (`toolResultAdded`), or as text for a call replayed as text. Failed and aborted turns keep their content, unlike in pi-ai, which drops them. It is added after the call's turn: before the next user message, before the next assistant turn, or at the end of the history.
 - Tool-call IDs that Claude cannot accept are mapped to valid native IDs. Tool results use the same mapping. Stored Pi IDs remain unchanged.
 - Thinking without a matching native carrier is replayed as ordinary assistant text. This allows switching providers during a session.
 - A historical call to a tool outside the declared tools, in a turn without a matching carrier, is replayed as assistant text (`[Tool call: <name>, id <id>] <arguments>`; `toolCallAsText`), and its result as user text (`[Tool result: <name>, id <id>]` or `[Tool error: …]`). Calls to declared tools stay native.
