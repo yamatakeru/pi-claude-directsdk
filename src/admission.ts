@@ -2,9 +2,9 @@
  * Request-scoped native HTTP admission relay.
  *
  * The relay binds an ephemeral loopback port with a random per-request route.
- * It forwards only the first upstream Messages request and rejects later
- * native recovery or retry attempts locally, so one Pi model call produces at
- * most one upstream request. Native authentication and identity headers pass
+ * It forwards the first upstream Messages request, plus one retry after a 401
+ * authentication error, and rejects other native recovery or retry attempts
+ * locally. Native authentication and identity headers pass
  * through memory; they are never logged or persisted.
  *
  * Only HTTP transfer encoding changes. Request identity and payload stay
@@ -329,7 +329,8 @@ const HOP_BY_HOP = new Set([
 export class AdmissionRelay {
   readonly url: string;
   readonly ready: Promise<void>;
-  used = false;
+  /** Admitted requests: 1, or 2 after an auth-refresh retry. */
+  admitted = 0;
   denied = 0;
   status: number | null = null;
   requestId: string | null = null;
@@ -413,17 +414,22 @@ export class AdmissionRelay {
     return relay;
   }
 
+  get used(): boolean {
+    return this.admitted > 0;
+  }
+
   /** The upstream's own message for a non-200 answer, "" when none was captured. */
   errorText(): string {
-    const text = this.errorBody.toString("utf-8");
+    const message = this.upstreamError()?.["message"];
+    return typeof message === "string" ? message : this.errorBody.toString("utf-8");
+  }
+
+  private upstreamError(): Record<string, unknown> | undefined {
     try {
-      const message = (JSON.parse(text) as Record<string, unknown>)["error"] as Record<
-        string,
-        unknown
-      >;
-      return typeof message?.["message"] === "string" ? message["message"] : text;
+      const answer = JSON.parse(this.errorBody.toString("utf-8")) as unknown;
+      return isRecord(answer) && isRecord(answer["error"]) ? answer["error"] : undefined;
     } catch {
-      return text;
+      return undefined;
     }
   }
 
@@ -460,6 +466,29 @@ export class AdmissionRelay {
     });
   }
 
+  /**
+   * After a 401 `authentication_error`, Claude Code refreshes its login and
+   * re-issues the request once. Admit that retry, and report only its outcome.
+   */
+  private admitAuthRetry(): boolean {
+    if (
+      this.admitted !== 1 ||
+      this.status !== 401 ||
+      this.upstreamError()?.["type"] !== "authentication_error"
+    ) {
+      return false;
+    }
+    this.status = null;
+    this.requestId = null;
+    this.failure = null;
+    this.capture = new SseCapture();
+    this.errorBody = Buffer.alloc(0);
+    this.phase = "request-body";
+    this.requestBodyBytes = null;
+    this.upstreamConnectionReused = null;
+    return true;
+  }
+
   private deny(res: ServerResponse): void {
     this.denied += 1;
     const body = Buffer.from(
@@ -482,32 +511,24 @@ export class AdmissionRelay {
       res.end();
       return;
     }
-    // The check-and-set below runs synchronously before any await, so it is
-    // atomic on the Node event loop: exactly one request is admitted.
     if (
       req.method !== "POST" ||
       !safeEqualPath(path, `${this.route}/v1/messages`) ||
-      req.headers["origin"] !== undefined ||
-      this.cancelled ||
-      this.used
+      req.headers["origin"] !== undefined
     ) {
-      if (
-        req.method === "POST" &&
-        safeEqualPath(path, `${this.route}/v1/messages`) &&
-        req.headers["origin"] === undefined &&
-        (this.cancelled || this.used)
-      ) {
-        // Drain the body so the child sees a clean denial.
-        req.resume();
-        this.deny(res);
-        return;
-      }
       req.resume();
       res.writeHead(404, { Connection: "close" });
       res.end();
       return;
     }
-    this.used = true;
+    // Synchronous check-and-set: atomic on the event loop.
+    if (this.cancelled || (this.used && !this.admitAuthRetry())) {
+      // Drain the body so the child sees a clean denial.
+      req.resume();
+      this.deny(res);
+      return;
+    }
+    this.admitted += 1;
 
     let body: Buffer;
     try {

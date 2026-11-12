@@ -1,6 +1,6 @@
 # Architecture
 
-One Pi model call spawns one request-scoped `claude` process and admits at most one upstream Messages request.
+One Pi model call spawns one request-scoped `claude` process and admits one upstream Messages request, plus at most one retry after an authentication error.
 
 ```mermaid
 flowchart TD
@@ -11,7 +11,7 @@ flowchart TD
     E --> F["Provider replays history on child stdin (shouldQuery: false, final frame queries)"]
     F --> G["CLI sends POST /v1/messages through relay"]
     G -->|first request| H["Relay forwards to api.anthropic.com, captures SSE"]
-    G -->|later requests| I["Relay denies locally, no upstream contact"]
+    G -->|later requests, except one retry after a 401 authentication error| I["Relay denies locally, no upstream contact"]
     E --> J["Provider converts child stdout stream-json to Pi events"]
     H --> K["Provider publishes tool calls only after upstream completes and child exits"]
     K --> L["Pi executes tools (inert MCP advertises them, never executes)"]
@@ -71,7 +71,7 @@ The child environment (`buildChildEnv`) points `ANTHROPIC_BASE_URL` at the relay
 
 ### Admission relay (`src/admission.ts`)
 
-The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. The relay changes HTTP transfer encoding. Request identity stays native. The transport may rewrite the request body for replay-stable native context and mid-conversation system messages, both described below, and add beta values to `anthropic-beta`; the payload otherwise stays native.
+The relay binds an ephemeral loopback port with a random per-request route (`/admit/<token>`). It forwards only the first upstream Messages request and rejects later native recovery or retry attempts locally with `PI_MODEL_ADMISSION_CONSUMED`. The one exception: after a 401 with error type `authentication_error`, such as a revoked OAuth token, Claude Code refreshes its login and retries, and the relay forwards that one retry and reports only its outcome. Other statuses, other 401 bodies, and a second 401 stay denied (#91). The relay changes HTTP transfer encoding. Request identity stays native. The transport may rewrite the request body for replay-stable native context and mid-conversation system messages, both described below, and add beta values to `anthropic-beta`; the payload otherwise stays native.
 
 ### Replay-stable native context (`src/native-context.ts`)
 
@@ -180,5 +180,5 @@ Pi owns tool execution. The native child advertises Pi tools through the inert M
 
 - Only `tool_choice` `auto` and `none` are supported.
 - Constrained decoding is not enforced. Grammar and best-effort (`strict: "prefer"`) annotations fall back to normal JSON-schema tool calling. Required strict (`strict: "require"`) stays rejected. Malformed native tool input still fails downstream.
-- Native tool calls reach Pi only after the first upstream response is complete and the child has exited.
+- Native tool calls reach Pi only after the upstream response is complete and the child has exited.
 - On models with verified mid-conversation tool-change support, historical calls to tools declared earlier in the transcript are replayed natively, including tools no longer active. Pi never executes a tool outside the active tools.

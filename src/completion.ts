@@ -97,7 +97,8 @@ export function gateResponse(options: {
     );
     if (rejection) throw rejection;
     throw upstreamError(
-      `first upstream attempt: status ${relay.status ?? "unknown"}, ` +
+      `${relay.admitted > 1 ? "upstream retry after an authentication error" : "first upstream attempt"}: ` +
+        `status ${relay.status ?? "unknown"}, ` +
         `capture ${relay.capture.complete ? "complete" : "incomplete"}` +
         (relay.failure ? `, relay failure ${formatRelayFailure(relay.failure)}` : "") +
         `, native retries denied: ${relay.denied}` +

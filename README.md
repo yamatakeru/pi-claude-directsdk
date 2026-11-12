@@ -15,7 +15,7 @@ This is an independent project, not made or endorsed by Anthropic.
 - **Plan limits are protected.** Requests carry the extension's own client label instead of an SDK one, which [anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074) measured as drawing the 5-hour window faster. A turn charged to usage credits stops the session unless you opt in.
 - **The prompt cache is reused** across calls despite the replay: 98.6% to 99.9% cache-read share on warm turns in the recorded [measurements](docs/transport-measurements.md). The lower values come from short sessions, where each new turn is a larger share of the prompt.
 
-The costs: each call starts a new Claude Code process, which adds about half a second. The transport depends on Claude Code's internal `stream-json` and request formats, so only a qualified range of versions is supported. A local relay rewrites each request to keep the cache stable and admits one upstream request per call. Anthropic does not document this kind of use, and a policy or billing change could stop it working.
+The costs: each call starts a new Claude Code process, which adds about half a second. The transport depends on Claude Code's internal `stream-json` and request formats, so only a qualified range of versions is supported. A local relay rewrites each request to keep the cache stable and admits one upstream request per call, plus one retry after an authentication error. Anthropic does not document this kind of use, and a policy or billing change could stop it working.
 
 ### Alternatives
 
