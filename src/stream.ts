@@ -2,10 +2,10 @@
  * Pi `streamSimple` implementation for the Claude Native provider.
  *
  * One Pi model call spawns one request-scoped `claude` child, replays Pi
- * history in native `stream-json` form, admits at most one upstream Messages
- * request through the loopback relay, and converts the native response to Pi
- * stream events. Pi alone executes tools: native tool calls are published
- * only after the first upstream response is complete, usage and stop reason
+ * history in native `stream-json` form, admits one upstream Messages request
+ * (plus one auth-refresh retry) through the loopback relay, and converts the
+ * native response to Pi stream events. Pi alone executes tools: native tool
+ * calls are published only after the upstream response is complete, usage and stop reason
  * are captured, and the child has exited.
  */
 
@@ -152,7 +152,7 @@ async function executeCall(
         requestId: relay?.requestId ?? "",
         // HTTP status of the admitted upstream response; null when none arrived.
         upstreamStatus: relay?.status ?? null,
-        upstreamRequests: relay?.used ? 1 : 0,
+        upstreamRequests: relay?.admitted ?? 0,
         blockedRequests: relay?.denied ?? 0,
         relayFailure: relay?.failure ? deepClone(relay.failure) : null,
         nativeContext: nativeContext
@@ -375,7 +375,8 @@ async function executeCall(
     if (options.signal?.aborted) {
       throw cancelledError();
     }
-    if (providerResponse) {
+    // A retry that failed before its headers leaves the 401's response here.
+    if (providerResponse && relay.status !== null) {
       await options.onResponse?.(providerResponse, model);
     }
 
