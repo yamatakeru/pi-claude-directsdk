@@ -17,11 +17,6 @@ const PAGES: Record<string, string> = {
     "|---|---|---|---|---|---|",
     "| Claude Haiku 5.5 | $1 / MTok | $1.25 / MTok | $2 / MTok | $0.1 / MTok | $5 / MTok |",
     "",
-    "| Cache operation | Multiplier | Duration |",
-    "|---|---|---|",
-    "| 5-minute cache write | 1.25x | Cache valid for 5 minutes |",
-    "| 1-hour cache write | 2x | Cache valid for 1 hour |",
-    "",
   ].join("\n"),
   [`${ROOT}/build-with-claude/effort.md`]: [
     "| Level | Notes |",

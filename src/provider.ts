@@ -3,8 +3,9 @@ import type {
   Api, AssistantMessageEventStream, Model, SimpleStreamOptions, TranscriptContext,
 } from "@earendil-works/pi-ai/compat";
 import type { Provider } from "@earendil-works/pi-ai";
-import { PROVIDER_ID } from "./models.js";
+import { nativeModel, PROVIDER_ID } from "./models.js";
 import { lazyStream } from "./lazy-stream.js";
+import { declaredPromptCache } from "./prompt-cache.js";
 
 export { PROVIDER_ID };
 
@@ -31,7 +32,7 @@ export function createClaudeNativeProvider(report: (message: string) => void): P
             // The store is typed for every model type; this provider only persists chat models.
             models = context.stored!.models
               .filter((model): model is Model<Api> => (model.type ?? "chat") === "chat")
-              .map(model => ({ ...model, name: `${model.name} (last verified snapshot)` }));
+              .map(model => withPromptCache({ ...model, name: `${model.name} (last verified snapshot)` }));
             refreshedAt = context.stored!.checkedAt!;
           } });
         }
@@ -48,7 +49,7 @@ export function createClaudeNativeProvider(report: (message: string) => void): P
         const result = await loadWebCatalog(picker, signal);
         signal.throwIfAborted();
         const accepted = await context.publish({ persist: { models: result.models, checkedAt: Date.now() }, update: () => {
-          models = result.models;
+          models = result.models.map(withPromptCache);
           refreshedAt = Date.now();
         } });
         if (!accepted) return;
@@ -70,6 +71,12 @@ export function createClaudeNativeProvider(report: (message: string) => void): P
     stream: (model, context, options) => streamSimple(model, context, options as SimpleStreamOptions),
     streamSimple,
   };
+}
+
+function withPromptCache(model: Model<Api>): Model<Api> {
+  const { promptCache: _stale, ...rest } = model;
+  const promptCache = declaredPromptCache(process.env, nativeModel(model.id, model.contextWindow));
+  return promptCache ? { ...rest, promptCache } : rest;
 }
 
 export function streamSimple(
