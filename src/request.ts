@@ -389,7 +389,7 @@ const WINDOWS_ESSENTIALS = [
  * case-insensitive in the child, but the copied object is not, so a
  * differently cased key would otherwise survive and still be read.
  */
-function deleteEnvVar(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform = process.platform): void {
+export function deleteEnvVar(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform = process.platform): void {
   const caseInsensitive = platform === "win32";
   for (const key of Object.keys(env)) {
     if (key === name || (caseInsensitive && key.toUpperCase() === name)) {

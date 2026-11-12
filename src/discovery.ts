@@ -16,7 +16,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSupervised, type ChildHandle } from "./process.js";
 import { pickerChildEnv, resolveClaude, setupChildEnv } from "./setup.js";
-import { CONFLICTING_BACKEND_VARS, routesElsewhere } from "./request.js";
+import { CONFLICTING_BACKEND_VARS, deleteEnvVar, routesElsewhere } from "./request.js";
 import { INSTALL_HINT } from "./errors.js";
 import { isRecord } from "./types.js";
 
@@ -153,6 +153,7 @@ export async function discoverModels(
  */
 function guardedChildEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const env = setupChildEnv(baseEnv);
-  for (const name of CONFLICTING_BACKEND_VARS) delete env[name];
+  // On Windows a differently cased key is dropped too, since the child reads names case-insensitively.
+  for (const name of CONFLICTING_BACKEND_VARS) deleteEnvVar(env, name);
   return env;
 }
