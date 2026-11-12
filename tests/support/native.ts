@@ -81,6 +81,7 @@ export interface NativeResponse {
   blocks: NativeBlock[];
   stopReason: string;
   usage?: Record<string, unknown>;
+  stopDetails?: Record<string, unknown>;
 }
 
 /** The Messages stream events of a response, from message_start to message_stop. */
@@ -111,7 +112,7 @@ function nativeEvents(response: NativeResponse): unknown[] {
     events.push({ type: "content_block_stop", index });
   });
   events.push(
-    { type: "message_delta", delta: { stop_reason: response.stopReason }, usage },
+    { type: "message_delta", delta: { stop_reason: response.stopReason, stop_details: response.stopDetails }, usage },
     { type: "message_stop" },
   );
   return events;
@@ -179,7 +180,7 @@ export interface NativeRun {
   /** Call options; the harness owns `env`. */
   options?: Omit<Partial<SimpleStreamOptions>, "env">;
   /** The upstream's answer to the child's request. Without it the child sends none. */
-  upstream?: { status?: number; contentType?: string; body: string };
+  upstream?: { status?: number; contentType?: string; headers?: Record<string, string>; body: string };
   /** Messages and headers of the child's request. Its body also carries `CLAUDE_CODE_EXTRA_BODY`. */
   request?: { messages?: unknown[]; headers?: Record<string, string>; attempts?: number };
   /** Records the child prints for the final frame. */
@@ -209,7 +210,7 @@ export async function runNative(t: test.TestContext, run: NativeRun): Promise<Na
           headers: request.headers,
           body: JSON.parse(Buffer.concat(chunks).toString("utf8")) as Record<string, unknown>,
         });
-        response.writeHead(answer.status ?? 200, { "content-type": answer.contentType ?? "text/event-stream" });
+        response.writeHead(answer.status ?? 200, { "content-type": answer.contentType ?? "text/event-stream", ...answer.headers });
         response.end(answer.body);
       });
     });

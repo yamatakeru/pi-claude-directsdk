@@ -24,6 +24,7 @@ import {
   ClaudeNativeError,
   incompleteError,
   loggedOutError,
+  type ClaudeLocation,
   nativeError,
   upstreamError,
 } from "./errors.js";
@@ -85,8 +86,9 @@ export function gateResponse(options: {
   childDetail: string;
   model: Model<Api>;
   nativeModelId: string;
+  location: ClaudeLocation;
 }): GatedResponse {
-  const { relay, native, exitCode, childDetail, model, nativeModelId } = options;
+  const { relay, native, exitCode, childDetail, model, nativeModelId, location } = options;
   const { results, assistants, nativeErrorText } = native;
   const used = relay.used;
   // A failed upstream response explains the turn even when the CLI then ends
@@ -121,7 +123,7 @@ export function gateResponse(options: {
     authoritative = relay.capture.message;
   } else {
     if (nativeErrorText && /authentication_failed|not logged in/i.test(nativeErrorText)) {
-      throw loggedOutError(nativeErrorText);
+      throw loggedOutError(nativeErrorText, location);
     }
     if (nativeErrorText) {
       const rejection = usageCreditsRejectionError(nativeErrorText);
@@ -132,7 +134,7 @@ export function gateResponse(options: {
       const rejection = usageCreditsRejectionError(resultErrors);
       if (rejection) throw rejection;
       if (/not logged in|authentication_failed/i.test(resultErrors)) {
-        throw loggedOutError(resultErrors);
+        throw loggedOutError(resultErrors, location);
       }
       if (/prompt is too long|context_length_exceeded/i.test(resultErrors)) {
         throw nativeError(
@@ -147,7 +149,7 @@ export function gateResponse(options: {
       const resultText =
         typeof result["result"] === "string" ? result["result"] : undefined;
       if (resultText && /not logged in/i.test(resultText)) {
-        throw loggedOutError(resultText);
+        throw loggedOutError(resultText, location);
       }
       throw incompleteError(`assistant, message_stop and one result required${childDetail}`);
     }
@@ -198,6 +200,7 @@ interface Publication {
   env: NodeJS.ProcessEnv;
   /** Pi's per-call output limit, when it set one. */
   maxTokens?: number | undefined;
+  requestId: string | null;
 }
 
 /**
@@ -342,7 +345,10 @@ function settleStop(options: Publication, toolCallCount: number): PublishedStop 
   const stop = authoritative.stop_reason ??
     native.streamStop ??
     (toolCallCount > 0 ? "tool_use" : "end_turn");
-  const mapped = mapStopReason(stop, stop === "refusal" ? textOf(authoritative) : undefined);
+  const mapped = mapStopReason(
+    stop,
+    stop === "refusal" ? refusalDetail(authoritative, options.requestId) : undefined,
+  );
   if (mapped.stopReason === "toolUse" && toolCallCount === 0) {
     throw incompleteError("Native stopped for tool use without tool calls");
   }
@@ -371,6 +377,18 @@ function settleStop(options: Publication, toolCallCount: number): PublishedStop 
     );
   }
   return mapped.stopReason;
+}
+
+/** Refusal text with its category and request id, for Anthropic's false-positive report. */
+function refusalDetail(message: NativeAssistantMessage, requestId: string | null): string {
+  const details = isRecord(message["stop_details"]) ? message["stop_details"] : {};
+  const explanation = typeof details["explanation"] === "string" ? details["explanation"] : "";
+  const text = explanation || textOf(message) || "The model refused to complete the request";
+  const facts = [
+    ...(typeof details["category"] === "string" ? [`category ${details["category"]}`] : []),
+    ...(requestId ? [`request id ${requestId}`] : []),
+  ];
+  return facts.length ? `${text} (${facts.join(", ")})` : text;
 }
 
 function mapStopReason(stop: string, detail?: string): {

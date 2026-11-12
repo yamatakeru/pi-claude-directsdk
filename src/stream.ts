@@ -390,6 +390,7 @@ async function executeCall(
       childDetail,
       model,
       nativeModelId: requestNativeModelId,
+      location: { command: resolved[0], configDir: childEnv["CLAUDE_CONFIG_DIR"] },
     });
     const stopReason = publishResponse({
       output,
@@ -401,6 +402,7 @@ async function executeCall(
       cutCalls: relay.capture.unparsed,
       env: mergedEnv,
       maxTokens: options.maxTokens,
+      requestId: relay.requestId,
     });
 
     const projection = messageProjection(output);

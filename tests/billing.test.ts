@@ -75,6 +75,10 @@ test("usage credits are opt-in and rejections are actionable non-retryable billi
   );
   assert.ok(rejection);
   assert.match(rejection.message, /^Claude Code billing:/);
+  assert.match(rejection.message, /setting PI_CLAUDE_NATIVE_ENTRYPOINT to an empty string/);
+  const outOfCredits = usageCreditsRejectionError("You're out of extra usage.");
+  assert.ok(outOfCredits);
+  assert.doesNotMatch(outOfCredits.message, /PI_CLAUDE_NATIVE_ENTRYPOINT/);
   assert.equal(usageCreditsRejectionError("overloaded"), undefined);
 });
 
