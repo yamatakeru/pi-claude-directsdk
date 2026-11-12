@@ -5,7 +5,7 @@ One Pi model call spawns one request-scoped `claude` process and admits one upst
 ```mermaid
 flowchart TD
     A["Pi calls streamSimple(model, transcript)"] --> B["Provider reads system prompt + tools from transcript messages"]
-    B --> C["Provider writes private files: system.md, settings.json (CLAUDE_CODE_EXTRA_BODY), tools.json"]
+    B --> C["Provider writes private files: system.md, settings.json (CLAUDE_CODE_EXTRA_BODY), tools.json when tools are active"]
     C --> D["Provider starts admission relay on 127.0.0.1 with per-request token route"]
     D --> E["Provider spawns one request-scoped claude process (ANTHROPIC_BASE_URL points at relay, child env only)"]
     E --> F["Provider replays history on child stdin (shouldQuery: false, final frame queries)"]
@@ -58,8 +58,7 @@ The system prompt and tool schemas travel through per-request private files with
 
 - `system.md`: the system prompt.
 - `settings.json`: carries `CLAUDE_CODE_EXTRA_BODY`.
-- `tools.json`: the inert MCP manifest.
-- `inert-mcp.mjs`: the inert MCP server source.
+- `tools.json`, `inert-mcp.mjs`: the inert MCP manifest and server source, only when Pi has active tools.
 
 Files avoid OS argument and environment-string limits. Authentication and identity headers are never replaced. The relay preserves them.
 
@@ -126,7 +125,7 @@ The provider reads `rate_limit_event.rate_limit_info`. If the authoritative resp
 
 ### Inert MCP (`src/inert-mcp.ts`)
 
-The MCP server name in the native child is `pi`. Tool names are `mcp__pi__<name>`. The server advertises Pi tools so the CLI can call them. It never executes them. Pi alone executes tools.
+The MCP server name in the native child is `pi`. Tool names are `mcp__pi__<name>`. The server advertises Pi tools so the CLI can call them. It never executes them. Pi alone executes tools. A request with no active Pi tools, such as a compaction summary or `toolChoice: "none"`, mounts no server; the native request is unchanged, even with replayed `mcp__pi__` calls (#93).
 
 The helper uses `process.execPath`. Under Bun, its MCP configuration sets `BUN_BE_BUN=1` only for that helper, so a compiled Pi executable runs the JavaScript rather than starting another agent. Node launches remain unchanged.
 

@@ -1,5 +1,8 @@
-/** Checks a call makes before it starts the child, and the onPayload hook. */
+/** Checks a call makes before it starts the child, the request files, and the onPayload hook. */
 import assert from "node:assert/strict";
+import { mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import test from "node:test";
 import type { TranscriptContext } from "@earendil-works/pi-ai/compat";
 import {
@@ -10,6 +13,7 @@ import {
   runNative,
   streamEventLines,
 } from "./support/native.ts";
+import { MCP_SERVER_NAME, writeRequestFiles, type ManifestEntry } from "../src/request.ts";
 
 const context = {
   messages: [
@@ -61,4 +65,17 @@ test("sends the body onPayload returns and rejects one that is not an object", a
   const invalid = await runNative(t, { context, options: { onPayload: () => 5 }, stdout });
   assert.equal(errorMessage(invalid.events).errorMessage, "onPayload replacement must be an object");
   assert.equal(invalid.childRequest, null);
+});
+
+test("mounts the inert MCP server only when the request has tools", async (t) => {
+  const dir = await mkdtemp(join(tmpdir(), "pi-claude-native-files-"));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const files = (manifest: ManifestEntry[]) => writeRequestFiles(join(dir, String(manifest.length)), { systemPrompt: "s", body: {}, manifest });
+
+  assert.equal(files([]).mcpConfigJson, '{"mcpServers":{}}');
+  assert.deepEqual((await readdir(join(dir, "0"))).sort(), ["settings.json", "system.md"]);
+
+  const config = JSON.parse(files([{ name: "read", description: "Read", inputSchema: { type: "object" } }]).mcpConfigJson);
+  assert.deepEqual(Object.keys(config.mcpServers), [MCP_SERVER_NAME]);
+  assert.deepEqual((await readdir(join(dir, "1"))).sort(), ["inert-mcp.mjs", "settings.json", "system.md", "tools.json"]);
 });

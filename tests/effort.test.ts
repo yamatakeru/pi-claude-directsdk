@@ -7,8 +7,6 @@ import { buildArgv, buildChildEnv, buildRequestBody, requestEffort } from "../sr
 const files = {
   systemPath: "s",
   settingsPath: "p",
-  toolsPath: "t",
-  mcpPath: "m",
   mcpConfigJson: "{}",
 };
 

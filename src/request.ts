@@ -252,8 +252,6 @@ export function requestEffort(body: Record<string, unknown>): string | undefined
 export interface RequestFiles {
   systemPath: string;
   settingsPath: string;
-  toolsPath: string;
-  mcpPath: string;
   mcpConfigJson: string;
 }
 
@@ -265,14 +263,18 @@ export function writeRequestFiles(
   mkdirSync(dir, { recursive: true, mode: 0o700 });
   const systemPath = `${dir}/system.md`;
   const settingsPath = `${dir}/settings.json`;
-  const toolsPath = `${dir}/tools.json`;
-  const mcpPath = `${dir}/inert-mcp.mjs`;
   writeFileSync(systemPath, files.systemPrompt, { encoding: "utf-8", mode: 0o600 });
   writeFileSync(
     settingsPath,
     JSON.stringify({ env: { CLAUDE_CODE_EXTRA_BODY: JSON.stringify(files.body) } }),
     { encoding: "utf-8", mode: 0o600 },
   );
+  // No tools: mount no server; same native request, faster child start (#93).
+  if (files.manifest.length === 0) {
+    return { systemPath, settingsPath, mcpConfigJson: JSON.stringify({ mcpServers: {} }) };
+  }
+  const toolsPath = `${dir}/tools.json`;
+  const mcpPath = `${dir}/inert-mcp.mjs`;
   writeFileSync(toolsPath, JSON.stringify(files.manifest), {
     encoding: "utf-8",
     mode: 0o600,
@@ -288,7 +290,7 @@ export function writeRequestFiles(
       },
     },
   });
-  return { systemPath, settingsPath, toolsPath, mcpPath, mcpConfigJson };
+  return { systemPath, settingsPath, mcpConfigJson };
 }
 
 /**
