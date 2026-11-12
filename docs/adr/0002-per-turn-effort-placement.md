@@ -35,8 +35,8 @@ Replayed history reaches a fresh child through stream-json, which drops any per-
 ## Consequences
 
 - `drop_block` is not sent. Replayed signed thinking now runs behind the statements it was generated with, so a prefix mismatch is less likely than before. If mismatch errors appear, adding it is a separate decision.
-- **The request-level effort follows the current level, as in the CLI's own requests.** A paid measurement on 2026-11-12 (Haiku 5.5, levels high → high → medium, one session) showed that this keeps the cache.
-  - Third request: 15,137 tokens read from the cache, 12 written, 4 uncached.
-  - That equals everything the second request read and wrote.
+- **The request-level effort follows the current level, as in the CLI's own requests.** Paid measurements on 2026-11-12 showed that this keeps the cache. Each ran on Haiku 5.5, one session, at levels high → high → medium. In both, the third request read everything the second request had read and written.
+  - Without thinking: 15,137 tokens read and 12 written.
+  - With signed thinking in every reply, replayed into the third request: 15,233 tokens read and 402 written. The third request was accepted.
 - **One intended difference from the CLI's builder.** The CLI delays a change that arrives while the last user message holds only tool results, until the next user message. Here the statement follows the last user message, so the level Pi asked for, which is also the `--effort` value, governs the reply.
 - **Revisit triggers.** Watch `nativeContext` skip reasons after a CLI update. A model the CLI does not give per-turn effort keeps today's behavior.
