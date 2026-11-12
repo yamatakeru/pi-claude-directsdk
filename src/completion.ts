@@ -424,11 +424,15 @@ function mergeAssistants(
   let stop: string | null | undefined;
   let id: string | undefined;
   let model: string | undefined;
+  let stopDetails: Record<string, unknown> | undefined;
   for (const assistant of assistants) {
     content.push(...deepClone(assistant.content));
     stop = assistant.stop_reason ?? stop;
     id = assistant.id ?? id;
     model = assistant.model ?? model;
+    // Claude Code's SDK message schema: "Structured refusal details, when stop_reason is refusal."
+    const details = assistant["stop_details"];
+    if (isRecord(details)) stopDetails = deepClone(details);
   }
   return {
     role: "assistant",
@@ -437,6 +441,7 @@ function mergeAssistants(
     usage: deepClone(result.usage ?? { input_tokens: 0, output_tokens: 0 }),
     ...(id ? { id } : {}),
     ...(model ? { model } : {}),
+    ...(stopDetails ? { stop_details: stopDetails } : {}),
   };
 }
 

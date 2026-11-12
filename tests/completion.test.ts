@@ -296,6 +296,18 @@ test("maps stop reasons", async (t) => {
       "Flagged by safeguards. (category cyber, request id req_test)",
     );
   }
+  // Without a relay capture, the details come from the child's assistant line.
+  const refusal = { blocks: [], stopReason: "refusal" };
+  assert.equal(
+    await failure(t, {
+      stdout: [
+        ...streamEventLines(refusal),
+        { type: "assistant", message: { role: "assistant", content: [], stop_reason: "refusal", stop_details: stopDetails } },
+        resultLine("success"),
+      ],
+    }),
+    "Flagged by safeguards. (category cyber)",
+  );
 
   assert.equal(
     errorMessage(await events(t, { stdout: streamed(reply("ok", "surprise")) })).errorMessage,
