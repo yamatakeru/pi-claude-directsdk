@@ -59,8 +59,8 @@ function promptCacheTtl(env: NodeJS.ProcessEnv): "5m" | "1h" {
  * started from inside another Claude client would otherwise report that
  * client's identity. An empty override leaves the label to the CLI.
  */
-function childEntrypoint(env: NodeJS.ProcessEnv): string | undefined {
-  const override = env[ENTRYPOINT_ENV];
+function childEntrypoint(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): string | undefined {
+  const override = readEnvVar(env, ENTRYPOINT_ENV, platform);
   if (override === undefined) return DEFAULT_ENTRYPOINT;
   if (override === "") return undefined;
   if (!/^[A-Za-z0-9._-]{1,64}$/.test(override)) {
@@ -384,13 +384,20 @@ const WINDOWS_ESSENTIALS = [
  * case-insensitive in the child, but the copied object is not, so a
  * differently cased key would otherwise survive and still be read.
  */
-function deleteEnvVar(env: NodeJS.ProcessEnv, name: string): void {
-  const caseInsensitive = process.platform === "win32";
+function deleteEnvVar(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform = process.platform): void {
+  const caseInsensitive = platform === "win32";
   for (const key of Object.keys(env)) {
     if (key === name || (caseInsensitive && key.toUpperCase() === name)) {
       delete env[key];
     }
   }
+}
+
+/** Read `name` from a copied environment; on Windows a differently cased key also counts. */
+function readEnvVar(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform): string | undefined {
+  if (env[name] !== undefined || platform !== "win32") return env[name];
+  const key = Object.keys(env).find((candidate) => candidate.toUpperCase() === name);
+  return key === undefined ? undefined : env[key];
 }
 
 /**
@@ -412,17 +419,20 @@ export function buildChildEnv(options: {
   baseEnv: NodeJS.ProcessEnv;
   relayUrl: string;
   body: Record<string, unknown>;
+  /** Decides how environment names match; defaults to this process's platform. */
+  platform?: NodeJS.Platform;
 }): NodeJS.ProcessEnv {
+  const platform = options.platform ?? process.platform;
   const env: NodeJS.ProcessEnv = { ...options.baseEnv };
   dropApiCredentials(env);
   const config = env["PI_CLAUDE_NATIVE_CONFIG_DIR"];
   if (config) {
     env["CLAUDE_CONFIG_DIR"] = config;
   }
-  deleteEnvVar(env, "CLAUDE_CODE_EXTRA_BODY");
+  deleteEnvVar(env, "CLAUDE_CODE_EXTRA_BODY", platform);
   // Native reads an inherited effort level ahead of `--effort`, which would
   // silently replace the level Pi selected.
-  deleteEnvVar(env, "CLAUDE_CODE_EFFORT_LEVEL");
+  deleteEnvVar(env, "CLAUDE_CODE_EFFORT_LEVEL", platform);
   env["ANTHROPIC_BASE_URL"] = options.relayUrl;
   env["ENABLE_TOOL_SEARCH"] = "false";
   env["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1";
@@ -431,8 +441,8 @@ export function buildChildEnv(options: {
   // breakpoint is invalid, and native subscription defaults can change.
   env["CLAUDE_CODE_PROMPT_CACHE_TTL"] = promptCacheTtl(env);
   // Plan usage is metered by this label. See docs/usage.md.
-  const entrypoint = childEntrypoint(env);
-  deleteEnvVar(env, "CLAUDE_CODE_ENTRYPOINT");
+  const entrypoint = childEntrypoint(env, platform);
+  deleteEnvVar(env, "CLAUDE_CODE_ENTRYPOINT", platform);
   if (entrypoint !== undefined) {
     env["CLAUDE_CODE_ENTRYPOINT"] = entrypoint;
   }

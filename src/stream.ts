@@ -149,6 +149,8 @@ async function executeCall(
       details: {
         nativeModel: nativeModelId,
         requestId: relay?.requestId ?? "",
+        // HTTP status of the admitted upstream response; null when none arrived.
+        upstreamStatus: relay?.status ?? null,
         upstreamRequests: relay?.used ? 1 : 0,
         blockedRequests: relay?.denied ?? 0,
         relayFailure: relay?.failure ? deepClone(relay.failure) : null,
