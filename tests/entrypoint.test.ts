@@ -32,6 +32,23 @@ test("the override sets the label, and an empty override leaves the label to the
   assert.equal("CLAUDE_CODE_ENTRYPOINT" in unlabelled, false);
 });
 
+test("on Windows the override is found under any case, elsewhere only exactly", () => {
+  const lower = { pi_claude_native_entrypoint: "my-tool", claude_code_entrypoint: "sdk-cli" };
+  const windows = buildChildEnv({ baseEnv: lower, relayUrl: "http://127.0.0.1:1", body: {}, platform: "win32" });
+  assert.equal(windows["CLAUDE_CODE_ENTRYPOINT"], "my-tool");
+  // The inherited label under another case is removed, not left beside the new one.
+  assert.equal("claude_code_entrypoint" in windows, false);
+  const empty = buildChildEnv({
+    baseEnv: { pi_claude_native_entrypoint: "" },
+    relayUrl: "http://127.0.0.1:1",
+    body: {},
+    platform: "win32",
+  });
+  assert.equal("CLAUDE_CODE_ENTRYPOINT" in empty, false);
+  const linux = buildChildEnv({ baseEnv: lower, relayUrl: "http://127.0.0.1:1", body: {}, platform: "linux" });
+  assert.equal(linux["CLAUDE_CODE_ENTRYPOINT"], DEFAULT_ENTRYPOINT);
+});
+
 test("an unusable override names the variable and the fix", () => {
   assert.throws(
     () => build({ [ENTRYPOINT_ENV]: "two words" }),
