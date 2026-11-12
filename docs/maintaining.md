@@ -54,7 +54,7 @@ Push work to a branch. CI checks types and compilation on branch pushes and pull
 These checks do not exercise the installed Pi runtime or make paid model requests.
 Use the [verification guidance](testing.md) for local runtime checks.
 
-Merge the branch into `main` with a squash merge once CI passes. Installations that follow `main` pick the change up with `pi update git:github.com/yamatakeru/pi-claude-native`; there is no npm release.
+Merge the branch into `main` with a squash merge once CI passes. Git installations that follow `main` pick the change up with `pi update git:github.com/yamatakeru/pi-claude-native`; npm installations get it with the next release.
 
 To release, open a pull request that:
 
@@ -71,6 +71,10 @@ git tag v<x.y.z> <squash-commit-sha> && git push origin v<x.y.z> &&
 ```
 
 `git push` refuses a tag that already exists on the remote and fails when the remote is unreachable, so the release is never published on another commit. `--verify-tag` publishes only on the pushed tag.
+
+The pushed tag also starts the Release workflow (`.github/workflows/release.yml`). It refuses a tag that does not match `version` in `package.json` and `package-lock.json`, runs the same checks as CI, and stages the package on npm with `npm stage publish` through trusted publishing. Approve the staged version with 2FA on npmjs.com (Staged Packages) or with `npm stage approve <stage-id>`; until then it is not installable. The workflow skips a version that is already on npm.
+
+The trusted publisher is configured on npmjs.com under the package's Settings, Trusted publishing: GitHub Actions, user `yamatakeru`, repository `pi-claude-native`, workflow `release.yml`, with only `npm stage publish` allowed. A new configuration expires unless a publish succeeds within 2 days, so add it just before a release. The first version on npm, 0.9.1, is published by hand, because a trusted publisher can only be added to a package that already exists on npm. Run `npm publish` from a clean checkout of the squash commit before pushing the tag, so the tag's run finds the version on npm and skips it.
 
 Installations pinned to a tag stay on it until the user changes the ref.
 

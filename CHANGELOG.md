@@ -2,6 +2,14 @@
 
 Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
+## [0.9.1] - 2026-11-12
+
+Claude Native is now published on npm as `pi-claude-native` and can be installed with `pi install npm:pi-claude-native`. Nothing else changed.
+
+### Changed
+
+- To move a Git installation to npm, run `pi remove git:github.com/yamatakeru/pi-claude-native`, then `pi install npm:pi-claude-native`. Installing from both loads the extension twice.
+
 ## [0.9.0] - 2026-11-12
 
 Checked with Pi 1.5.2 and Claude Code 2.1.322. `/model` lists the models your account can use, and changing the thinking level during a session keeps the prompt cache.
