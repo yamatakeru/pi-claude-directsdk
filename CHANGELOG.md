@@ -2,6 +2,20 @@
 
 Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
+## [0.9.0] - 2026-11-12
+
+Checked with Pi 1.5.2 and Claude Code 2.1.322. `/model` lists the models your account can use, and changing the thinking level during a session keeps the prompt cache.
+
+### Changed
+
+- The model list comes from the picker Claude Code serves your account, so `/model` also shows the older models the account still runs and the `fable` alias. To get that picker, discovery talks to Anthropic directly with Claude Code's nonessential traffic and feature flags left on; error reports and self-updates stay off, and a value you export is kept. Discovery never starts a model turn. Behind `ANTHROPIC_BASE_URL` or another backend it keeps the generic list ([#57](https://github.com/yamatakeru/pi-claude-native/issues/57), [#84](https://github.com/yamatakeru/pi-claude-native/pull/84)).
+- The `pi-claude-native/meta` diagnostic keeps the upstream HTTP status as `upstreamStatus`, so a saved session shows whether a failed turn was, for example, a 429 or a 400 ([#64](https://github.com/yamatakeru/pi-claude-native/issues/64), [#83](https://github.com/yamatakeru/pi-claude-native/pull/83)).
+
+### Fixed
+
+- Changing the thinking level during a session no longer makes the next request miss the whole prompt cache, on models where Claude Code states the effort per turn. Each earlier turn's level is stated where Claude Code places it in its own sessions, and `nativeContext` reports `turnEffortsPlaced`. The design is recorded in [ADR 0002](docs/adr/0002-per-turn-effort-placement.md) ([#5](https://github.com/yamatakeru/pi-claude-native/issues/5), [#85](https://github.com/yamatakeru/pi-claude-native/pull/85)).
+- On Windows, `PI_CLAUDE_NATIVE_ENTRYPOINT` is read under any letter case instead of being ignored ([#29](https://github.com/yamatakeru/pi-claude-native/issues/29), [#83](https://github.com/yamatakeru/pi-claude-native/pull/83)).
+
 ## [0.8.0] - 2026-11-11
 
 Checked with Pi 1.5.2 and Claude Code 2.1.322 (a fresh request, and a session written by another provider continued on Claude Native). Replay now accepts every history that Pi's own Anthropic provider can send. Switching models during a session, extensions that edit the history, and side requests such as an advisor no longer fail replay.
