@@ -39,4 +39,5 @@ Replayed history reaches a fresh child through stream-json, which drops any per-
   - Without thinking: 15,137 tokens read and 12 written.
   - With signed thinking in every reply, replayed into the third request: 15,233 tokens read and 402 written. The third request was accepted.
 - **One intended difference from the CLI's builder.** The CLI delays a change that arrives while the last user message holds only tool results, until the next user message. Here the statement follows the last user message, so the level Pi asked for, which is also the `--effort` value, governs the reply.
+- **Adjacent assistant turns share the earlier statement.** Two assistant frames with no user message between them get no statement between them, as in the CLI's builder: the second turn's historical level is stated by the first's. This happens, for example, when replay omits an empty user message. The reply being generated always has its own statement after the last user message.
 - **Revisit triggers.** Watch `nativeContext` skip reasons after a CLI update. A model the CLI does not give per-turn effort keeps today's behavior.
