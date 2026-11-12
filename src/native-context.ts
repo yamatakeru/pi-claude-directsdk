@@ -20,13 +20,16 @@ export type NativeContextStep =
   | "reminderDropped"
   | "openingReordered"
   | "breakpointPinned"
-  | "turnStartMarked";
+  | "turnStartMarked"
+  | "turnEffortsPlaced";
 
 export type NativeContextSkip =
   | "body is not a Messages request"
   | "queried frame is empty"
   | "queried tool results not uniquely matched"
-  | "rewrite failed";
+  | "rewrite failed"
+  | "turn efforts: no per-turn statement from the CLI"
+  | "turn efforts: assistant messages do not match the replay";
 
 /** Meta diagnostic outcome; never carries content. */
 export interface NativeContextReport {

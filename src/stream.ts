@@ -42,6 +42,7 @@ import { PROVIDER_ID, QUALIFIED_CLI_RANGE, nativeModel } from "./models.js";
 import type { NativeContextReport } from "./native-context.js";
 import { NativeOutput, parseNativeLine } from "./native-output.js";
 import { rewriteNativeRequest } from "./native-rewrite.js";
+import { planTurnEfforts } from "./turn-effort.js";
 import { encodeCarrier, messageProjection, type ReplayAdjustment } from "./replay.js";
 import { planRequest } from "./request-plan.js";
 import {
@@ -226,7 +227,7 @@ async function executeCall(
     const requestNativeModelId = nativeModel(model.id, model.contextWindow);
     nativeModelId = requestNativeModelId;
     const plan = planRequest(model, context, options, mergedEnv, requestNativeModelId);
-    const { systemPrompt, build, nativeTranscript, frames } = plan;
+    const { systemPrompt, build, nativeTranscript, frames, turnEfforts } = plan;
     replayAdjustments = plan.replayAdjustments;
     measurements.setReplayFrameCount(frames.length);
     measurements.mark("historyPrepared");
@@ -270,11 +271,15 @@ async function executeCall(
       body,
       manifest: build.manifest,
     });
+    const effort = requestEffort(body);
+    // Later calls state this turn's effort where it ran (turn-effort.ts).
+    if (effort !== undefined) output.providerThinkingLevel = effort;
+    const efforts = planTurnEfforts(turnEfforts, effort);
     // The final frame is exactly what Pi queried.
     const queried = frames[frames.length - 1]?.message.content ?? [];
     relay = await deps.createRelay(upstream, timeoutMs, {
       transformRequest: (raw: Buffer) => {
-        const rewrite = rewriteNativeRequest(raw, queried, nativeTranscript);
+        const rewrite = rewriteNativeRequest(raw, queried, nativeTranscript, efforts);
         nativeContext = rewrite.nativeContext;
         return rewrite.body;
       },
@@ -302,7 +307,7 @@ async function executeCall(
       claudeBin: resolved[0],
       nativeModelId: requestNativeModelId,
       files,
-      effort: requestEffort(body),
+      effort,
     });
     child = deps.spawn({
       command,
