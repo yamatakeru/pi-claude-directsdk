@@ -75,7 +75,7 @@ pi remove git:github.com/yamatakeru/pi-claude-native
 pi install npm:pi-claude-native
 ```
 
-The provider id is unchanged, so saved sessions continue.
+For a project installation (`pi install -l`), add `-l` to both commands. The provider id is unchanged, so saved sessions continue.
 
 ### Moving from pi-claude-directsdk
 
