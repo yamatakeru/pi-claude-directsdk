@@ -125,15 +125,18 @@ test("requires exactly one result, an assistant message and message_stop", async
 });
 
 test("reports a failed upstream response before the child's result", async (t) => {
-  const rejected = await failure(t, {
+  const rejected = errorMessage(await events(t, {
     upstream: {
       status: 400,
       contentType: "application/json",
       body: JSON.stringify({ type: "error", error: { type: "invalid_request_error", message: "Third-party apps now draw from your extra usage, not your plan limits." } }),
     },
     stdout: [resultLine("success")],
-  });
-  assert.match(rejected, /^Claude Code billing: /);
+  }));
+  assert.match(rejected.errorMessage ?? "", /^Claude Code billing: /);
+  // The billing text does not name the status, so the meta diagnostic keeps it.
+  const meta = rejected.diagnostics?.find((item) => item.type === "pi-claude-native/meta");
+  assert.equal((meta?.details as { upstreamStatus?: number | null } | undefined)?.upstreamStatus, 400);
 
   const overloaded = await failure(t, {
     upstream: { status: 529, contentType: "application/json", body: '{"type":"error","error":{"type":"overloaded_error","message":"Overloaded"}}' },
@@ -157,6 +160,7 @@ test("takes the relay capture as the response and still reports native error tex
   assert.equal(done.responseId, "msg_fake");
   const meta = done.diagnostics?.find((item) => item.type === "pi-claude-native/meta");
   assert.equal((meta?.details as { upstreamRequests?: number } | undefined)?.upstreamRequests, 1);
+  assert.equal((meta?.details as { upstreamStatus?: number | null } | undefined)?.upstreamStatus, 200);
 
   const failed = errorMessage(await events(t, {
     upstream: { body: sseResponse(response) },
