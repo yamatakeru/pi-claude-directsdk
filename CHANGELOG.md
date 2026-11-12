@@ -2,6 +2,21 @@
 
 Pi shows the entries newer than the last version it saw on the first fresh launch after an update. The [release notes](https://github.com/yamatakeru/pi-claude-native/releases) start from the same text and add details and how to pin a release.
 
+## [0.9.2] - 2026-11-13
+
+Pi's cache warming now follows the 1-hour prompt cache Claude Code writes, a revoked access token recovers without starting Claude Code by hand, and error messages say what to do next.
+
+### Changed
+
+- Refusal errors show the reason and category Anthropic gives, and the request id. Logged-out errors name the `claude` command and config directory Pi used. A rejection for third-party use points to the `PI_CLAUDE_NATIVE_ENTRYPOINT` fallback in [troubleshooting](docs/troubleshooting.md) ([#92](https://github.com/yamatakeru/pi-claude-native/issues/92), [#95](https://github.com/yamatakeru/pi-claude-native/pull/95)).
+- A request without tools, such as a compaction summary, no longer starts the inert MCP helper, so it finishes about 0.1 s sooner. The request sent to Anthropic is unchanged ([#93](https://github.com/yamatakeru/pi-claude-native/issues/93), [#97](https://github.com/yamatakeru/pi-claude-native/pull/97)).
+- The README lists a known upstream issue: text Claude writes before a tool call often arrives as thinking that paraphrases it, so Pi shows it as thinking ([#90](https://github.com/yamatakeru/pi-claude-native/issues/90), [#95](https://github.com/yamatakeru/pi-claude-native/pull/95)).
+
+### Fixed
+
+- Models declare the prompt cache lifetime Claude Code actually writes, 1 hour by default. Pi assumed 5 minutes and scheduled a cache refresh 4.5 minutes after each request. A refresh could also fail, because a one-token reply that ended in thinking was reported as an error; it now ends as `length`. The design is recorded in [ADR 0003](docs/adr/0003-prompt-cache-lifetime.md) ([#89](https://github.com/yamatakeru/pi-claude-native/issues/89), [#94](https://github.com/yamatakeru/pi-claude-native/pull/94)).
+- After a 401 `authentication_error`, such as a revoked access token, Claude Code refreshes its login and sends the request again. That one retry is now let through instead of every turn failing until Claude Code is started interactively ([#91](https://github.com/yamatakeru/pi-claude-native/issues/91), [#96](https://github.com/yamatakeru/pi-claude-native/pull/96)).
+
 ## [0.9.1] - 2026-11-12
 
 Claude Native is now published on npm as `pi-claude-native` and can be installed with `pi install npm:pi-claude-native`. Nothing else changed.
