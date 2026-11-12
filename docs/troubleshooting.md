@@ -69,7 +69,7 @@ Replay accepts every history pi-ai's Anthropic provider can send ([ADR 0001](adr
 
 Models whose built-in metadata supports mid-conversation tool changes replay `tool_addition` and `tool_removal` blocks at assistant boundaries. A tool used earlier in the conversation can be removed from the active tools without failing replay. Pi still validates the model response against the active tools, so a removed tool is never executed.
 
-Unsupported models keep the collapsed system message and current tool set, so any tool change misses the whole prompt cache on the next request. Anthropic does not support mid-conversation tool changes on them, so this cannot be avoided ([#3](https://github.com/yamatakeru/pi-claude-native/issues/3)). On those models, an earlier call to a tool that is no longer in the current set is replayed as text with its result instead of failing replay.
+Unsupported models keep the collapsed system message and current tool set, so any tool change misses the whole prompt cache on the next request. For models Anthropic does not list for mid-conversation tool changes, this cannot be avoided ([#3](https://github.com/yamatakeru/pi-claude-native/issues/3)). When the catalog could not load or parse Anthropic's page, it reports a warning and supported models fall back the same way; refresh the catalog to restore the capability. On those models, an earlier call to a tool that is no longer in the current set is replayed as text with its result instead of failing replay.
 
 ## Cross-provider history
 

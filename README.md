@@ -69,7 +69,7 @@ Remove the old package (`pi remove npm:pi-claude-directsdk` or `pi remove git:gi
 ## Known issues
 
 - Plan billing depends on two undocumented Anthropic checks: the custom client label must stay out of the SDK bucket, and the replacement `<docs>` section must not look like Pi's prompt ([#23](https://github.com/yamatakeru/pi-claude-native/issues/23), joaomj/pi-claude-directsdk [#27](https://github.com/joaomj/pi-claude-directsdk/issues/27)). If rejections return, the extension can go back to the `sdk-cli` label; if [anthropics/claude-code#97074](https://github.com/anthropics/claude-code/issues/97074) is fixed, the label and the prompt change can both go.
-- Changing the thinking level mid-session misses the whole cache once on the next request ([#5](https://github.com/yamatakeru/pi-claude-native/issues/5)).
+- Changing the thinking level mid-session to one with a different effort misses the cache once on the next request. Both recorded changes, on Opus 5.5, read nothing from it, system prompt and tools included ([#5](https://github.com/yamatakeru/pi-claude-native/issues/5)).
 - After a long tool loop with thinking, the next user turn may miss part of the cache; under investigation ([#10](https://github.com/yamatakeru/pi-claude-native/issues/10)).
 - A tool change still causes a full cache miss on models that Anthropic's documentation does not list for mid-conversation tool changes, such as Haiku 4.5 and Sonnet 5 ([Tool changes](docs/troubleshooting.md#tool-changes)). Anthropic does not support the blocks that keep the cache on those models.
 
