@@ -9,6 +9,7 @@ import {
   nativeModel,
   resultLine,
   runNative,
+  sseResponse,
   streamEventLines,
 } from "./support/native.ts";
 
@@ -70,6 +71,27 @@ test("a truncated thinking-only turn fails with the cause instead of an empty me
     done.content.some((block) => block.type === "text" && block.text === "partial answer"),
     true,
   );
+});
+
+test("a one-token limit, as in Pi's cache warming, ends thinking-only with length", async (t) => {
+  const { events } = await run(t, false, { maxTokens: 1 });
+  assert.equal(events.some((event) => event.type === "error"), false);
+  assert.equal(doneMessage(events).stopReason, "length");
+
+  // Claude Code retries the cut-off turn; the relay denies the retries and the result is an error.
+  const response: NativeResponse = { blocks: [{ type: "thinking", thinking: "", signature: "sig" }], stopReason: "max_tokens", usage };
+  const relayed = (maxTokens?: number) => runNative(t, {
+    context,
+    model: nativeModel({ id: "claude-haiku-5-5", contextWindow: 1_000_000, maxTokens: 128_000 }),
+    options: maxTokens === undefined ? {} : { maxTokens },
+    upstream: { body: sseResponse(response) },
+    request: { attempts: 4 },
+    stdout: [resultLine("success", { is_error: true, result: "max output tokens" })],
+  });
+  const warm = await relayed(1);
+  assert.equal(warm.upstreamRequests.length, 1);
+  assert.equal(doneMessage(warm.events).stopReason, "length");
+  assert.match(errorMessage((await relayed()).events).errorMessage ?? "", /spent its whole output budget on thinking/);
 });
 
 test("forwards the model output limit so the native default cannot cap the turn", async (t) => {

@@ -24,6 +24,8 @@ flowchart TD
 
 The extension registers a complete Pi provider with id `claude-native` and an initially empty catalog. Cache-only refresh restores verified snapshots from Pi’s model store without CLI probes or network work. Live refresh runs after editor startup and reports failures instead of returning pinned models.
 
+Each published model declares the prompt cache lifetime the child writes, or none when caching is off, so Pi's cache warming plans refreshes against the real lifetime ([ADR 0003](adr/0003-prompt-cache-lifetime.md)).
+
 `streamSimple` uses `src/lazy-stream.ts` to return a stream immediately. The wrapper loads `src/stream.ts` asynchronously and preserves the model, transcript, and request options. See [startup.md](startup.md).
 
 ### History replay (`src/replay.ts`)
@@ -140,7 +142,7 @@ When the environment points Claude Code at another backend (`ANTHROPIC_BASE_URL`
 
 Cleanup closes the guard's connections, then closes the server only if it is still listening. Bun can stop the server when closing connections; Node leaves it listening. Other cleanup failures remain errors.
 
-Public Anthropic Markdown documents supply current model IDs, model pages, prices, effort levels, and cache lifetimes. Model pages must confirm the canonical Claude API ID, input modalities, context window, output limit, and thinking capability. The account picker supplies resolved aliases and effort constraints. Current public models can appear even before the CLI picker includes them; their labels state that account availability is unverified.
+Public Anthropic Markdown documents supply current model IDs, model pages, prices, and effort levels. Model pages must confirm the canonical Claude API ID, input modalities, context window, output limit, and thinking capability. The account picker supplies resolved aliases and effort constraints. Current public models can appear even before the CLI picker includes them; their labels state that account availability is unverified.
 
 Missing metadata excludes only the affected model with a warning. Mid-conversation tool changes are optional: when the mid-conversation page cannot be read or no longer names its models, they stay off on every model, under a separate warning, and the catalog is kept. Shared-source failures reject refresh and remove the snapshot. Refresh uses a shared deadline and abort signal. Pi owns persistence and generation-checked publication.
 
@@ -162,7 +164,7 @@ The catalog has no hand-written model inventory, aliases, limits, or price table
 
 - Claude Code’s account picker for resolved aliases and account-visible models.
 - [Anthropic’s model overview](https://platform.claude.com/docs/en/about-claude/models/overview) and linked model pages for canonical routes and capabilities.
-- [Anthropic’s pricing documentation](https://platform.claude.com/docs/en/about-claude/pricing) for token prices, request-wide tiers, and cache lifetimes.
+- [Anthropic’s pricing documentation](https://platform.claude.com/docs/en/about-claude/pricing) for token prices and request-wide tiers.
 - [Anthropic’s effort documentation](https://platform.claude.com/docs/en/build-with-claude/effort) for web-only model effort levels.
 - [Anthropic’s mid-conversation documentation](https://platform.claude.com/docs/en/build-with-claude/mid-conversation-system-messages) for the models that accept mid-conversation tool additions and removals.
 

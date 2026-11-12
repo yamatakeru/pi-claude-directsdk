@@ -400,6 +400,7 @@ async function executeCall(
       toolNames: build.toolNames,
       cutCalls: relay.capture.unparsed,
       env: mergedEnv,
+      maxTokens: options.maxTokens,
     });
 
     const projection = messageProjection(output);

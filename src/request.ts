@@ -10,7 +10,8 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import type { ThinkingLevel, Tool } from "@earendil-works/pi-ai/compat";
-import { isRecord, type NativeCacheControl } from "./types.js";
+import { isRecord, isTruthy } from "./types.js";
+import { promptCacheTtl } from "./prompt-cache.js";
 import { INERT_MCP_SOURCE } from "./inert-mcp.js";
 
 /** MCP server name in the native child. Tool names are `mcp__pi__<name>`. */
@@ -37,23 +38,6 @@ export const CONFLICTING_BACKEND_VARS = [
   "CLAUDE_CODE_USE_FOUNDRY",
 ] as const;
 
-function isTruthy(value: string | undefined): boolean {
-  return (
-    value !== undefined &&
-    !["", "0", "false", "no", "off"].includes(value.toLowerCase())
-  );
-}
-
-/** Keep replay anchors and CLI-generated breakpoints on the same TTL. */
-function promptCacheTtl(env: NodeJS.ProcessEnv): "5m" | "1h" {
-  if (isTruthy(env["FORCE_PROMPT_CACHING_5M"])) return "5m";
-  const ttl = env["CLAUDE_CODE_PROMPT_CACHE_TTL"] ?? "1h";
-  if (ttl !== "5m" && ttl !== "1h") {
-    throw new Error("CLAUDE_CODE_PROMPT_CACHE_TTL must be 5m or 1h; unset it to use 1h");
-  }
-  return ttl;
-}
-
 /**
  * Client label for the child. An inherited label is replaced, because a Pi
  * started from inside another Claude client would otherwise report that
@@ -70,24 +54,6 @@ function childEntrypoint(env: NodeJS.ProcessEnv, platform: NodeJS.Platform): str
     );
   }
   return override;
-}
-
-/** Cache metadata only; Pi still owns every message and instruction. */
-export function replayCacheControl(
-  env: NodeJS.ProcessEnv,
-  nativeModelId: string,
-): NativeCacheControl | undefined {
-  const ttl = promptCacheTtl(env);
-  const family = ["haiku", "sonnet", "opus", "fable", "mythos"].find(
-    (name) => nativeModelId.toLowerCase().includes(name),
-  );
-  if (
-    isTruthy(env["DISABLE_PROMPT_CACHING"]) ||
-    (family && isTruthy(env[`DISABLE_PROMPT_CACHING_${family.toUpperCase()}`]))
-  ) {
-    return undefined;
-  }
-  return { type: "ephemeral", ttl };
 }
 
 /**

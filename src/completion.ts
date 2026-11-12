@@ -196,6 +196,8 @@ interface Publication {
   /** Tools whose calls the capture dropped because they were cut off at max_tokens. */
   cutCalls: string[];
   env: NodeJS.ProcessEnv;
+  /** Pi's per-call output limit, when it set one. */
+  maxTokens?: number | undefined;
 }
 
 /**
@@ -336,7 +338,7 @@ function publishToolCalls(options: Publication): ToolCall[] {
 
 /** Map the native stop reason, failing a turn that ended without an answer. */
 function settleStop(options: Publication, toolCallCount: number): PublishedStop {
-  const { output, model, native, gated: { authoritative }, cutCalls } = options;
+  const { output, model, native, gated: { authoritative }, cutCalls, maxTokens } = options;
   const stop = authoritative.stop_reason ??
     native.streamStop ??
     (toolCallCount > 0 ? "tool_use" : "end_turn");
@@ -351,16 +353,18 @@ function settleStop(options: Publication, toolCallCount: number): PublishedStop 
   // A turn can spend its entire output budget on thinking and return no text
   // and no tool call. Pi would publish an empty message and a generic
   // truncation notice that names no cause, so fail with the cause instead.
+  // A one-token limit, as in Pi's cache warming, asks for no answer.
   const answered = output.content.some(
     (block) => (block.type === "text" && block.text.trim() !== "") || block.type === "toolCall",
   );
-  if (stop === "max_tokens" && !answered && cutCalls.length > 0) {
+  const failsUnanswered = stop === "max_tokens" && !answered && maxTokens !== 1;
+  if (failsUnanswered && cutCalls.length > 0) {
     throw nativeError(
       `${model.id} ran out of output tokens while writing the arguments of ${cutCalls.join(", ")}, ` +
         "so the call was not run. Ask for smaller steps, or lower the thinking level, then retry.",
     );
   }
-  if (stop === "max_tokens" && !answered) {
+  if (failsUnanswered) {
     throw nativeError(
       `${model.id} spent its whole output budget on thinking and returned no answer. ` +
         "Lower the thinking level or switch models, then retry.",

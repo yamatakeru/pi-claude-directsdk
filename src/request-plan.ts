@@ -16,7 +16,8 @@ import type { Api, Model, SimpleStreamOptions, TranscriptContext } from "@earend
 import { replaceDocsSections } from "./docs-section.js";
 import { supportsNativeToolChanges } from "./model-compat.js";
 import { prepareHistory, type ReplayAdjustment } from "./replay.js";
-import { buildRequestBody, replayCacheControl, type RequestBuild } from "./request.js";
+import { buildRequestBody, type RequestBuild } from "./request.js";
+import { replayCacheControl } from "./prompt-cache.js";
 import { prepareNativeTranscript, type NativeTranscriptPlan } from "./transcript.js";
 import { recordedTurnEfforts } from "./turn-effort.js";
 import type { NativeFrame } from "./types.js";

@@ -114,6 +114,14 @@ export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/** An environment flag that is set to anything but an off value. */
+export function isTruthy(value: string | undefined): boolean {
+  return (
+    value !== undefined &&
+    !["", "0", "false", "no", "off"].includes(value.toLowerCase())
+  );
+}
+
 /** A finite number, or null. */
 export function toNumber(value: unknown): number | null {
   return typeof value === "number" && Number.isFinite(value) ? value : null;

@@ -108,17 +108,6 @@ function pricingFor(name: string, pricing: string[][]): ChatModel["cost"] {
   return { ...base, ...(tiers.length ? { tiers } : {}) };
 }
 
-function cacheLifetimes(prices: string): NonNullable<ChatModel["promptCache"]> {
-  const table = tables(prices).find(rows => rows[0]?.[0] === "Cache operation");
-  const seconds = (operation: string): number => {
-    const duration = table?.find(row => row[0] === operation)?.[2];
-    const match = /^Cache valid for (\d+) (minutes?|hours?)$/.exec(duration ?? "");
-    if (!match) throw new Error("missing prompt cache lifetime");
-    return Number(match[1]) * (match[2]?.startsWith("hour") ? 3600 : 60);
-  };
-  return { short: seconds("5-minute cache write"), long: seconds("1-hour cache write") };
-}
-
 function thinkingMap(name: string, thinking: string, defaultEffort: string | undefined,
   live: DiscoveredModel | undefined, effort: string[][]): NonNullable<ChatModel["thinkingLevelMap"]> {
   let supported: string[];
@@ -189,7 +178,6 @@ export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSig
       return new Set<string>();
     }),
   ]);
-  const promptCache = cacheLifetimes(prices);
   const overviewTables = tables(overview);
   const current = overviewTables.find(table => table[0]?.[0] === "Feature")?.find(row => row[0] === "Claude API ID")?.slice(1);
   if (!current?.length) throw new Error(`Missing current model IDs in ${OVERVIEW}`);
@@ -231,7 +219,6 @@ export async function loadWebCatalog(picker: DiscoveredModel[], signal: AbortSig
           contextWindow: tokenLimit(value("Context window"), "context window"),
           maxTokens: tokenLimit(value("Max output"), "output limit"),
           cost: pricingFor(link.name, pricing),
-          promptCache,
           ...(toolChanges.has(link.name) ? { compat: { supportsMidConvoToolChanges: true } } : {}),
         };
         models.push(model);

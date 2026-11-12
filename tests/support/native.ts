@@ -49,7 +49,7 @@ for await (const line of input) {
     console.log(JSON.stringify({ type: "result", subtype: "success", is_error: false, num_turns: 0, usage }));
     continue;
   }
-  if (plan.request) {
+  for (let attempt = 0; plan.request && attempt < (plan.request.attempts ?? 1); attempt++) {
     const response = await fetch(process.env.ANTHROPIC_BASE_URL + "/v1/messages", {
       method: "POST",
       headers: { "content-type": "application/json", ...plan.request.headers },
@@ -181,7 +181,7 @@ export interface NativeRun {
   /** The upstream's answer to the child's request. Without it the child sends none. */
   upstream?: { status?: number; contentType?: string; body: string };
   /** Messages and headers of the child's request. Its body also carries `CLAUDE_CODE_EXTRA_BODY`. */
-  request?: { messages?: unknown[]; headers?: Record<string, string> };
+  request?: { messages?: unknown[]; headers?: Record<string, string>; attempts?: number };
   /** Records the child prints for the final frame. */
   stdout: unknown[];
   exitCode?: number;
@@ -233,6 +233,7 @@ export async function runNative(t: test.TestContext, run: NativeRun): Promise<Na
       ? {
           messages: run.request?.messages ?? [{ role: "user", content: [{ type: "text", text: "fake" }] }],
           headers: run.request?.headers ?? {},
+          attempts: run.request?.attempts,
         }
       : null,
     stdout: run.stdout,
