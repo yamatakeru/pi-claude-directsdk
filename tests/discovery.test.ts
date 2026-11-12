@@ -9,7 +9,7 @@ import { discoverModels } from "../src/discovery.ts";
 const FAKE_CLAUDE = `#!/usr/bin/env node
 const fs = require("node:fs");
 const keys = ["ANTHROPIC_BASE_URL", "CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC", "DISABLE_TELEMETRY",
-  "DISABLE_ERROR_REPORTING", "DISABLE_AUTOUPDATER"];
+  "DISABLE_ERROR_REPORTING", "DISABLE_AUTOUPDATER", "CLAUDE_CODE_USE_BEDROCK"];
 fs.writeFileSync(process.env.FAKE_SEEN, JSON.stringify(Object.fromEntries(keys.map((key) => [key, process.env[key] ?? null]))));
 process.stdin.resume();
 process.stdin.on("end", () => {
@@ -55,8 +55,11 @@ async function discover(env: NodeJS.ProcessEnv, lines: unknown[]) {
       ...env,
     });
     const models = await run.catch((error: unknown) => error);
-    const seen = JSON.parse(await readFile(seenPath, "utf8")) as Record<string, string | null>;
-    return { models, seen };
+    // Without the record, discovery failed before the child ran: show why.
+    const seenText = await readFile(seenPath, "utf8").catch(() => {
+      throw models instanceof Error ? models : new Error("the fake Claude Code never ran");
+    });
+    return { models, seen: JSON.parse(seenText) as Record<string, string | null> };
   } finally {
     await rm(root, { recursive: true, force: true });
   }
@@ -85,6 +88,7 @@ test("reads the served picker first-party, with feature flags on and self-update
     DISABLE_TELEMETRY: null,
     DISABLE_ERROR_REPORTING: "1",
     DISABLE_AUTOUPDATER: "1",
+    CLAUDE_CODE_USE_BEDROCK: null,
   });
 });
 
@@ -97,17 +101,24 @@ test("keeps the user's own opt-out of Claude Code's nonessential traffic", async
   assert.equal(seen["DISABLE_TELEMETRY"], "1");
 });
 
-test("keeps the loopback guard when Claude Code is pointed at another backend", async () => {
+test("behind another backend, keeps traffic off and sends Claude Code to the loopback guard", async () => {
   for (const env of [{ ANTHROPIC_BASE_URL: "https://gateway.example" }, { CLAUDE_CODE_USE_BEDROCK: "1" }]) {
-    const { seen } = await discover(env, [initialized(SERVED)]);
+    const { models, seen } = await discover(env, [initialized(SERVED)]);
+    assert.ok(Array.isArray(models), String(models));
     assert.match(seen["ANTHROPIC_BASE_URL"] ?? "", /^http:\/\/127\.0\.0\.1:\d+$/);
+    assert.equal(seen["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"], "1");
+    assert.equal(seen["DISABLE_TELEMETRY"], "1");
+    // A backend switch would take Claude Code past the guard to its own cloud client.
+    assert.equal(seen["CLAUDE_CODE_USE_BEDROCK"], null);
   }
 });
 
 test("a model-turn line on stdout fails discovery", async () => {
   for (const type of ["assistant", "stream_event", "result"]) {
-    const { models } = await discover({}, [initialized(SERVED), { type }]);
-    assert.ok(models instanceof Error);
-    assert.match(models.message, new RegExp(`^Claude started a model turn during model discovery \\(${type} record\\)`));
+    for (const lines of [[initialized(SERVED), { type }], [{ type }, initialized(SERVED)]]) {
+      const { models } = await discover({}, lines);
+      assert.ok(models instanceof Error);
+      assert.match(models.message, new RegExp(`^Claude started a model turn during model discovery \\(${type} record\\)`));
+    }
   }
 });

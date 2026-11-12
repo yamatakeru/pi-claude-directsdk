@@ -6,16 +6,17 @@
  * models gated per account) only first-party, so the handshake talks to
  * Anthropic directly. It writes only `initialize` and closes stdin, so there
  * is no user turn; a model-turn line on stdout fails discovery. When the
- * environment points Claude Code at another backend, a loopback guard that
- * refuses every request stands in for it instead.
+ * environment points Claude Code at another backend, the served picker is out
+ * of reach anyway: the child keeps nonessential traffic off, and a loopback
+ * guard that refuses every request stands in for the backend.
  */
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSupervised, type ChildHandle } from "./process.js";
-import { pickerChildEnv, resolveClaude } from "./setup.js";
-import { routesElsewhere } from "./request.js";
+import { pickerChildEnv, resolveClaude, setupChildEnv } from "./setup.js";
+import { CONFLICTING_BACKEND_VARS, routesElsewhere } from "./request.js";
 import { INSTALL_HINT } from "./errors.js";
 import { isRecord } from "./types.js";
 
@@ -36,12 +37,13 @@ export async function discoverModels(
   baseEnv: NodeJS.ProcessEnv = process.env,
 ): Promise<DiscoveredModel[]> {
   signal.throwIfAborted();
-  const env = pickerChildEnv(baseEnv);
+  const guarded = routesElsewhere(baseEnv);
+  const env = guarded ? guardedChildEnv(baseEnv) : pickerChildEnv(baseEnv);
   const resolved = resolveClaude(undefined, env);
   if (!resolved) throw new Error(INSTALL_HINT);
   let contacted = false;
   // Behind another backend, deny every request, even the first one.
-  const guard = routesElsewhere(baseEnv)
+  const guard = guarded
     ? createServer((request, response) => {
         if (request.method === "POST" && request.url?.split("?")[0] === "/v1/messages") contacted = true;
         response.writeHead(403).end("Model requests are disabled during discovery");
@@ -143,4 +145,14 @@ export async function discoverModels(
       throw new AggregateError(errors, "Claude discovery cleanup failed");
     }
   }
+}
+
+/**
+ * Environment of a guarded handshake. A backend switch would make Claude Code
+ * use its own cloud client and bypass the guard, so the switches are dropped.
+ */
+function guardedChildEnv(baseEnv: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const env = setupChildEnv(baseEnv);
+  for (const name of CONFLICTING_BACKEND_VARS) delete env[name];
+  return env;
 }
