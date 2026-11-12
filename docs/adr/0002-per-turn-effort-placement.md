@@ -13,12 +13,12 @@ Replayed history reaches a fresh child through stream-json, which drops any per-
 ## Decision
 
 - **Levels.** Each replayed assistant frame gets the effort it ran at:
-  - the `providerThinkingLevel` this provider recorded, which is now set on every response to the effort sent as `--effort`;
-  - otherwise Pi's `thinkingLevel`, mapped through the model's `thinkingLevelMap`.
+  - the `providerThinkingLevel` this provider recorded, which is now set on every response to the effort sent as `--effort`, when the current model has that level. A level from another model that the current one lacks, such as `max`, is never restated.
+  - otherwise Pi's `thinkingLevel`, mapped through the current model's `thinkingLevelMap`.
   - A turn with neither takes the next known level after it, as the CLI's own builder does. A session with one turn from another provider therefore keeps working, and the result is the same in every later request.
 - **Placement.** The relay places the statements as the builder above would, after the native-context steps and the tool-change system messages.
 - **When the relay changes nothing.** The request is forwarded as built when:
-  - the CLI did not put exactly one statement, at the current level, on a system message;
+  - the CLI did not put exactly one statement, at the current level, on the system message where the first statement goes;
   - the assistant count differs from the replay;
   - every turn already ran at the current level.
 - **Reporting.** The step reports `turnEffortsPlaced` or a skip reason in `nativeContext`, and never fails a call.

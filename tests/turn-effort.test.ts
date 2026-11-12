@@ -5,13 +5,15 @@ import test from "node:test";
 import type { AssistantMessage, Message, TranscriptContext } from "@earendil-works/pi-ai/compat";
 import { PROVIDER_ID } from "../src/models.ts";
 import { rewriteNativeRequest } from "../src/native-rewrite.ts";
+import { encodeCarrier, messageProjection } from "../src/replay.ts";
+import { prepareNativeTranscript } from "../src/transcript.ts";
 import { placeTurnEfforts, planTurnEfforts, recordedTurnEfforts } from "../src/turn-effort.ts";
 import { doneMessage, nativeModel, resultLine, runNative, sseResponse } from "./support/native.ts";
 
 type Wire = Record<string, unknown>;
 
 const usage = { input: 1, output: 1, cacheRead: 0, cacheWrite: 0, totalTokens: 2, cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 } };
-const MAP = { minimal: "low", low: "low", medium: "medium", high: "high" };
+const MAP = { minimal: "low", low: "low", medium: "medium", high: "high", xhigh: "xhigh" };
 
 function assistant(text: string, fields: Partial<AssistantMessage> = {}): AssistantMessage {
   return {
@@ -39,16 +41,23 @@ function place(frames: string[], current: string): Wire {
 }
 
 test("recorded efforts prefer the effort this provider sent, then Pi's mapped level", () => {
+  const twoFrames = assistant("two frames");
+  const native = (text: string) => ({ role: "assistant" as const, content: [{ type: "text" as const, text }] });
+  twoFrames.diagnostics = [encodeCarrier([native("two"), native("frames")], messageProjection(twoFrames))];
+  twoFrames.thinkingLevel = "medium";
   const history: Message[] = [
     { role: "user", content: "u0", timestamp: 0 },
     assistant("sent", { providerThinkingLevel: "xhigh", thinkingLevel: "high" }),
     assistant("mapped", { thinkingLevel: "minimal" }),
     assistant("other provider", { provider: "anthropic", providerThinkingLevel: "max", thinkingLevel: "medium" }),
+    // A level the current model lacks, sent on another model, is not restated.
+    assistant("other model", { model: "claude-opus-5-5", providerThinkingLevel: "max", thinkingLevel: "high" }),
     assistant("unknown"),
     assistant("", { content: [] }),
+    twoFrames,
   ];
-  // The empty turn is not replayed, so it has no frame.
-  assert.deepEqual(recordedTurnEfforts(history, MAP), ["xhigh", "low", "medium", undefined]);
+  // The empty turn is not replayed, so it has no frame; a carrier replays one frame per native message.
+  assert.deepEqual(recordedTurnEfforts(history, MAP), ["xhigh", "low", "medium", "high", undefined, "medium", "medium"]);
 });
 
 test("a turn without a known effort takes the next known one, the last ones the current", () => {
@@ -112,6 +121,41 @@ test("a statement rides on a system message already at its position, keeping its
   assert.deepEqual((body["messages"] as Wire[])[1], environment("high"));
 });
 
+test("a change after a tool-result turn is stated after it, and consecutive user messages share one statement", () => {
+  const toolResult: Wire = { role: "user", content: [{ type: "tool_result", tool_use_id: "t", content: "r" }] };
+  const body: Wire = {
+    messages: [user("u0"), environment("medium"), reply("A0"), toolResult, user("u1")],
+    output_config: { effort: "medium" },
+  };
+  assert.equal(placeTurnEfforts(body, { frames: ["high"], current: "medium" }), "turnEffortsPlaced");
+  assert.deepEqual(body["messages"], [user("u0"), environment("high"), reply("A0"), toolResult, user("u1"), statement("medium")]);
+});
+
+test("a statement merges into an injected tool-change message, at a boundary and at the tail", () => {
+  const tool = { name: "alpha", description: "alpha", parameters: { type: "object", properties: {} } };
+  const later = { name: "beta", description: "beta", parameters: { type: "object", properties: {} } };
+  const transcript = prepareNativeTranscript([
+    { role: "system", content: "base", toolsAdded: [tool], timestamp: 0 },
+    { role: "user", content: "u0", timestamp: 1 },
+    assistant("A0"),
+    { role: "system", content: "beta", toolsAdded: [later], timestamp: 2 },
+    { role: "user", content: "u1", timestamp: 3 },
+    assistant("A1"),
+    { role: "user", content: "u2", timestamp: 4 },
+    { role: "system", content: "gamma", timestamp: 5 },
+  ] as Message[], true)!;
+  const raw = Buffer.from(JSON.stringify(cliRequest(2, "low")));
+  const { body } = rewriteNativeRequest(raw, [], transcript, { frames: ["high", "medium"], current: "low" });
+  const messages = JSON.parse(body.toString()).messages as Wire[];
+  assert.deepEqual(messages.map((message) => [message["role"], (message["output_config"] as Wire | undefined)?.["effort"]]), [
+    ["user", undefined], ["system", "high"], ["assistant", undefined], ["user", undefined],
+    ["system", "medium"], ["assistant", undefined], ["user", undefined], ["system", "low"],
+  ]);
+  // Both statements after the first rode on the injected messages.
+  assert.ok(Array.isArray(messages[4]?.["content"]) && (messages[4]["content"] as unknown[]).length > 0);
+  assert.ok(Array.isArray(messages[7]?.["content"]) && (messages[7]["content"] as unknown[]).length > 0);
+});
+
 test("a request already at every recorded level is left alone", () => {
   const body = cliRequest(2, "high");
   const before = structuredClone(body);
@@ -128,6 +172,9 @@ test("an unexpected request shape is forwarded as built", () => {
     // The statement is not the level this call asked for.
     [{ messages: [user("u0"), environment("low"), reply("A0"), user("u1")] }, "turn efforts: no per-turn statement from the CLI"],
     [{ messages: [user("u0"), environment("medium"), user("u1")] }, "turn efforts: assistant messages do not match the replay"],
+    // The statement is not where the first one goes.
+    [{ messages: [user("u0"), { role: "system", content: "x" }, environment("medium"), reply("A0"), user("u1")] }, "turn efforts: no per-turn statement from the CLI"],
+    [{ messages: [user("u0"), environment("medium"), null, reply("A0"), user("u1")] }, "turn efforts: no per-turn statement from the CLI"],
   ];
   for (const [body, skip] of cases) {
     const before = structuredClone(body);

@@ -29,13 +29,12 @@ export interface TurnEffortPlan {
 type Level = Partial<Record<string, string | null>> | undefined;
 
 function frameEffort(message: AssistantMessage, map: Level): string | undefined {
-  // The exact effort this provider sent; Pi's requested level otherwise.
-  if (message.provider === PROVIDER_ID && typeof message.providerThinkingLevel === "string") {
-    return message.providerThinkingLevel;
-  }
+  // The exact effort this provider sent, while the current model has that
+  // level; Pi's requested level mapped for the current model otherwise.
+  const sent = message.provider === PROVIDER_ID ? message.providerThinkingLevel : undefined;
+  if (sent !== undefined && Object.values(map ?? {}).includes(sent)) return sent;
   const level = message.thinkingLevel;
-  const mapped = level === undefined ? undefined : map?.[level];
-  return typeof mapped === "string" && mapped ? mapped : undefined;
+  return (level === undefined ? undefined : map?.[level]) || undefined;
 }
 
 /** Recorded effort per replayed assistant frame; undefined where unknown. */
@@ -85,28 +84,26 @@ function withEffort(message: WireMessage, effort: string | undefined): WireMessa
   return Object.keys(config).length > 0 ? { ...rest, output_config: config } : rest;
 }
 
+const statement = (effort: string): WireMessage => ({ role: "system", content: [], output_config: { effort } });
+
 /**
  * Place the effort statements in a parsed Messages request. Returns null when
  * nothing changed. The top-level effort follows the last statement, as in the
- * CLI's own requests.
+ * CLI's own requests. An unexpected shape is left as built.
  */
 export function placeTurnEfforts(
   body: Record<string, unknown>,
   plan: TurnEffortPlan,
 ): "turnEffortsPlaced" | NativeContextSkip | null {
+  const noStatement = "turn efforts: no per-turn statement from the CLI";
   const messages = body["messages"];
-  if (!Array.isArray(messages)) return "turn efforts: no per-turn statement from the CLI";
-  const stated = messages.filter((message) => isRecord(message) && effortOf(message) !== undefined);
+  if (!Array.isArray(messages) || !messages.every(isRecord)) return noStatement;
+  const [stated, ...more] = messages.filter((message) => effortOf(message) !== undefined);
   // The CLI states one level, the current one, on its environment message.
-  if (
-    stated.length !== 1 ||
-    !isRecord(stated[0]) ||
-    stated[0]["role"] !== "system" ||
-    effortOf(stated[0]) !== plan.current
-  ) {
-    return "turn efforts: no per-turn statement from the CLI";
+  if (!stated || more.length > 0 || stated["role"] !== "system" || effortOf(stated) !== plan.current) {
+    return noStatement;
   }
-  const assistants = messages.filter((message) => isRecord(message) && message["role"] === "assistant").length;
+  const assistants = messages.filter((message) => message["role"] === "assistant").length;
   if (assistants !== plan.frames.length) return "turn efforts: assistant messages do not match the replay";
   if (plan.frames.every((effort) => effort === plan.current)) return null;
 
@@ -116,27 +113,26 @@ export function placeTurnEfforts(
   let ordinal = 0;
   let effective: string | undefined;
   let pending: string | undefined;
-  for (const raw of messages as WireMessage[]) {
-    let message = raw;
-    if (message["role"] === "system") {
-      message = withEffort(message, pending);
-      if (pending !== undefined) effective = pending;
-      pending = undefined;
-    } else if (message["role"] !== "user" && pending !== undefined) {
-      output.push({ role: "system", content: [], output_config: { effort: pending } });
-      effective = pending;
+  for (let message of messages as WireMessage[]) {
+    const role = message["role"];
+    if (role !== "user") {
+      if (role === "system") {
+        // The CLI's statement must sit where the first one goes.
+        if (pending === undefined && effortOf(message) !== undefined) return noStatement;
+        message = withEffort(message, pending);
+      } else if (pending !== undefined) {
+        output.push(statement(pending));
+      }
       pending = undefined;
     }
     output.push(message);
-    if (message["role"] === "assistant") ordinal += 1;
-    if (message["role"] === "user") {
+    if (role === "assistant") ordinal += 1;
+    if (role === "user") {
       const next = plan.frames[ordinal] ?? plan.current;
-      if (next !== effective) pending = next;
+      if (next !== effective) pending = effective = next;
     }
   }
-  if (pending !== undefined) {
-    output.push({ role: "system", content: [], output_config: { effort: pending } });
-  }
+  if (pending !== undefined) output.push(statement(pending));
   body["messages"] = output;
   return "turnEffortsPlaced";
 }
