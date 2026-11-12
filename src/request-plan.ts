@@ -18,6 +18,7 @@ import { supportsNativeToolChanges } from "./model-compat.js";
 import { prepareHistory, type ReplayAdjustment } from "./replay.js";
 import { buildRequestBody, replayCacheControl, type RequestBuild } from "./request.js";
 import { prepareNativeTranscript, type NativeTranscriptPlan } from "./transcript.js";
+import { recordedTurnEfforts } from "./turn-effort.js";
 import type { NativeFrame } from "./types.js";
 
 export interface RequestPlan {
@@ -28,6 +29,8 @@ export interface RequestPlan {
   nativeTranscript: NativeTranscriptPlan | undefined;
   /** Replay frames; the last one is the queried frame. */
   frames: NativeFrame[];
+  /** The recorded effort of each replayed assistant frame; undefined where unknown. */
+  turnEfforts: Array<string | undefined>;
   replayAdjustments: ReplayAdjustment[];
 }
 
@@ -71,5 +74,6 @@ export function planRequest(
     ? new Set(getDeclaredTools(messages).map((tool) => tool.name))
     : new Set(build.toolNames);
   const { frames, replayAdjustments } = prepareHistory(history, allowedToolNames, cacheControl);
-  return { systemPrompt, build, nativeTranscript, frames, replayAdjustments };
+  const turnEfforts = recordedTurnEfforts(history, model.thinkingLevelMap);
+  return { systemPrompt, build, nativeTranscript, frames, turnEfforts, replayAdjustments };
 }

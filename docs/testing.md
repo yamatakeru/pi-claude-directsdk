@@ -15,6 +15,7 @@ Run it on Node 22. The suite uses `node:test` and needs no subscription credenti
 - Backend overrides are rejected and API credentials are left out of the Claude Code environment without the test bypass.
 - The usage-credit guard stops an overage turn, permits it with `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
 - Discovery reads the served picker first-party with Claude Code's feature flags on, keeps a user's opt-out and the loopback guard behind another backend, and fails on a model-turn record.
+- A thinking-level change states each replayed turn's effort where Claude Code places it in its own sessions, keeps the previous request as the prefix of the next, and forwards any other request shape as built.
 - The tool-change plan emits by-value additions (including redefinitions), removals, and assistant-boundary injections only when model metadata supports them.
 
 The tests use a temporary fake executable in the stream tests. They do not prove real Claude generation, native cache reuse, or upstream acceptance of the beta fields. The installed-Pi harness remains the end-to-end gate.
@@ -34,6 +35,9 @@ The current maintainer installation is Pi 1.5.2 with Claude Code 2.1.322 on macO
 - Offline startup (`npm run verify`): no stderr and no observed Claude child starts.
 - Fresh model request (`fresh --paid`): a successful response with the user's full extension set.
 - Complete existing-session replay (`session --paid`): a session written by `openai-codex/gpt-6.1-sol` (18 assistant turns) continued on Haiku 5.5, with 17 replay acknowledgments.
+- Thinking-level change (direct calls through `streamClaudeNative`, Haiku 5.5, one session at high, high, medium, with a 15K-token system prompt): two runs. In each, the third request read everything the second request had read and written, and `nativeContext` reported `turnEffortsPlaced`.
+  - First run: 15,137 tokens read and 12 written; the replies had no thinking.
+  - Second run, with replayed signed thinking: 15,233 tokens read and 402 written. Every reply carried signed thinking, and the third, at medium, was accepted with the first two turns' thinking replayed. It answered from both earlier results (346 + 427 = 773).
 - Warm cache (`warm --paid`, no prior session): three successful requests, one upstream request each, stable Pi prompt and tool hashes, and cache reads of 64.26%, 98.76% and 99.85%. The first request read a prefix that an earlier run had written within the cache lifetime; on a cold cache earlier the same day it read 0%.
 
 Replayed thinking was last checked on Claude Code 2.1.318, as a temporary check: signed thinking from an earlier turn was still sent and accepted; conversations started on 2.1.286 or earlier were not tested (see [Replayed thinking and the assistant model](transport-measurements.md#replayed-thinking-and-the-assistant-model)).

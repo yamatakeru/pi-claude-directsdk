@@ -5,11 +5,13 @@
  * once. The original bytes are forwarded whenever nothing applied.
  *
  * Native-context runs first: it reads the CLI's own trailing system message,
- * which an injection at the request tail would otherwise follow.
+ * which an injection at the request tail would otherwise follow. Per-turn
+ * effort runs last, so a statement can ride on an injected system message.
  */
 
 import { stabilizeNativeRequest, type NativeContextReport } from "./native-context.js";
 import { injectNativeSystemMessages, type NativeTranscriptPlan } from "./transcript.js";
+import { placeTurnEfforts, type TurnEffortPlan } from "./turn-effort.js";
 import type { NativeContentBlock } from "./types.js";
 import { isRecord } from "./types.js";
 
@@ -35,6 +37,7 @@ export function rewriteNativeRequest(
   raw: Buffer,
   queried: readonly NativeContentBlock[],
   plan?: NativeTranscriptPlan,
+  efforts?: TurnEffortPlan,
 ): NativeRewrite {
   const injections = plan?.systemInjections ?? [];
   let parsed = parse(raw);
@@ -56,7 +59,11 @@ export function rewriteNativeRequest(
     const messages = parsed["messages"];
     if (!Array.isArray(messages)) throw new Error("Native request is missing its messages array");
     parsed["messages"] = injectNativeSystemMessages(messages, injections, plan!.assistantFrames);
-  } else if (nativeContext.applied.length === 0) {
+  }
+  const outcome = efforts ? placeTurnEfforts(parsed, efforts) : null;
+  if (outcome === "turnEffortsPlaced") nativeContext.applied.push(outcome);
+  else if (outcome !== null) nativeContext.skipped.push(outcome);
+  if (injections.length === 0 && nativeContext.applied.length === 0) {
     return { body: raw, nativeContext };
   }
   return { body: Buffer.from(JSON.stringify(parsed), "utf-8"), nativeContext };
