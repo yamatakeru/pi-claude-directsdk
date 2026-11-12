@@ -48,9 +48,9 @@ Install the extension from npm. It follows the latest release:
 pi install npm:pi-claude-native
 ```
 
-To stay on a release instead, add its version, for example `npm:pi-claude-native@0.9.1`; `pi update` does not move a pinned version. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
+To stay on a release instead, add its version, for example `npm:pi-claude-native@0.9.2`; `pi update` does not move a pinned version. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
 
-To follow `main` between releases, install from Git instead with `pi install git:github.com/yamatakeru/pi-claude-native`, or add a tag such as `@v0.9.1` to stay on a release. Install from one source only: Pi identifies an npm package by its name and a Git package by its URL, so both would load.
+To follow `main` between releases, install from Git instead with `pi install git:github.com/yamatakeru/pi-claude-native`, or add a tag such as `@v0.9.2` to stay on a release. Install from one source only: Pi identifies an npm package by its name and a Git package by its URL, so both would load.
 
 Start or restart interactive Pi, open `/model`, and wait for the catalog refresh. On a fresh install, this step must complete before selecting the model from the command line; later invocations can use the saved catalog, for example `pi --model claude-native/haiku`. `pi update --models` does not refresh this catalog.
 
