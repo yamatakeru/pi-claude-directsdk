@@ -138,6 +138,28 @@ test("denies a retry after any other failure, and a second 401", async (t) => {
     assert.equal(relay.admitted, 1, name);
   }
 
+  // A retry while the 401 is still arriving is denied, even if its body so far parses.
+  let finish: (() => void) | undefined;
+  const open = createServer((request, response) => {
+    request.resume();
+    response.writeHead(401, { "content-type": "application/json" });
+    response.write(JSON.stringify(AUTH_ERROR));
+    finish = () => response.end();
+  });
+  await new Promise<void>((resolve) => open.listen(0, "127.0.0.1", resolve));
+  t.after(() => new Promise<void>((resolve) => open.close(() => resolve())));
+  const openAddress = open.address();
+  assert.ok(openAddress && typeof openAddress !== "string");
+  const pending = await AdmissionRelay.create(`http://127.0.0.1:${openAddress.port}`, 5_000);
+  t.after(() => pending.close());
+  const first = await fetch(`${pending.url}/v1/messages`, { method: "POST", body: "{}" });
+  const early = await fetch(`${pending.url}/v1/messages`, { method: "POST", body: "{}" });
+  assert.equal(early.status, 400);
+  await early.text();
+  finish?.();
+  await first.text();
+  assert.equal(pending.admitted, 1);
+
   const { relay, send, served } = await sequence(t, [{ status: 401, body: AUTH_ERROR }]);
   assert.deepEqual([await send(), await send(), await send()], [401, 401, 400]);
   assert.equal(served(), 2);

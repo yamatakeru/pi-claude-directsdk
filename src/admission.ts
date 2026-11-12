@@ -468,11 +468,14 @@ export class AdmissionRelay {
 
   /**
    * After a 401 `authentication_error`, Claude Code refreshes its login and
-   * re-issues the request once. Admit that retry, and report only its outcome.
+   * re-issues the request once. Admit that retry once the 401 has ended
+   * cleanly, and report only the retry's outcome.
    */
   private admitAuthRetry(): boolean {
     if (
       this.admitted !== 1 ||
+      this.activeUpstream !== null ||
+      this.failure !== null ||
       this.status !== 401 ||
       this.upstreamError()?.["type"] !== "authentication_error"
     ) {
