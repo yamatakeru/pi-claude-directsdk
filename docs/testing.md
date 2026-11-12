@@ -34,6 +34,7 @@ The current maintainer installation is Pi 1.5.2 with Claude Code 2.1.322 on macO
 
 - Offline startup (`npm run verify`): no stderr and no observed Claude child starts.
 - Fresh model request (`fresh --paid`): a successful response with the user's full extension set.
+- Model discovery from the served picker, as a temporary check. The real CLI handshake with discovery's own arguments returned 14 picker rows, and stdout carried only `control_response`. Models built from those rows by discovery and the catalog were then called directly through `streamClaudeNative`, twice each, with a one-tool system message: Haiku 4.5 and Sonnet 5 both replied `OK` with status 200.
 - Complete existing-session replay (`session --paid`): a session written by `openai-codex/gpt-6.1-sol` (18 assistant turns) continued on Haiku 5.5, with 17 replay acknowledgments.
 - Thinking-level change (direct calls through `streamClaudeNative`, Haiku 5.5, one session at high, high, medium, with a 15K-token system prompt): two runs. In each, the third request read everything the second request had read and written, and `nativeContext` reported `turnEffortsPlaced`.
   - First run: 15,137 tokens read and 12 written; the replies had no thinking.
