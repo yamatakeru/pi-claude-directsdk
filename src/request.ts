@@ -31,7 +31,7 @@ const API_CREDENTIAL_VARS = [
   "ANTHROPIC_FOUNDRY_API_KEY",
 ] as const;
 
-const CONFLICTING_BACKEND_VARS = [
+export const CONFLICTING_BACKEND_VARS = [
   "CLAUDE_CODE_USE_BEDROCK",
   "CLAUDE_CODE_USE_VERTEX",
   "CLAUDE_CODE_USE_FOUNDRY",
@@ -107,6 +107,11 @@ export function checkEnvConflicts(env: NodeJS.ProcessEnv): string[] {
     }
   }
   return conflicts;
+}
+
+/** Whether the environment sends Claude Code to a backend other than Anthropic's own API. */
+export function routesElsewhere(env: NodeJS.ProcessEnv): boolean {
+  return isTruthy(env[TEST_UPSTREAM_ENV]) || checkEnvConflicts(env).length > 0;
 }
 
 export function toolPrefixedName(bare: string): string {
@@ -384,7 +389,7 @@ const WINDOWS_ESSENTIALS = [
  * case-insensitive in the child, but the copied object is not, so a
  * differently cased key would otherwise survive and still be read.
  */
-function deleteEnvVar(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform = process.platform): void {
+export function deleteEnvVar(env: NodeJS.ProcessEnv, name: string, platform: NodeJS.Platform = process.platform): void {
   const caseInsensitive = platform === "win32";
   for (const key of Object.keys(env)) {
     if (key === name || (caseInsensitive && key.toUpperCase() === name)) {

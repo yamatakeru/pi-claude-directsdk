@@ -17,7 +17,7 @@ pi -e ./extensions/claude-native/index.ts -p --model claude-native/sonnet -- "He
 
 Startup performs no CLI probes or web requests. Pi restores only a previously verified catalog snapshot, labeled as such. A fresh offline install has no Claude Native models. Interactive Pi refreshes catalogs in the background after the editor is ready.
 
-Refresh uses Claude Code's account picker and Anthropic's public model, pricing, and effort documentation. Models absent from the account picker are labeled `not in CLI picker`; their account entitlement is unverified. Missing required metadata excludes the affected model with a warning. A failed refresh reports the error and removes the snapshot. There is no pinned fallback.
+Refresh uses Claude Code's account picker and Anthropic's public model, pricing, and effort documentation. The picker includes older models the account still runs, so each one whose official model page confirms its limits, price, and thinking capability is listed. Reading the account's picker needs Claude Code's nonessential traffic and feature flags, so the discovery handshake leaves them on and sends Claude Code's own telemetry; model calls keep them off (see [Catalog discovery](architecture.md#catalog-discovery-srcdiscoveryts-srcweb-catalogts)). Models absent from the account picker are labeled `not in CLI picker`; their account entitlement is unverified. Missing required metadata excludes the affected model with a warning. A failed refresh reports the error and removes the snapshot. There is no pinned fallback.
 
 The request transport still loads on the first Claude request. See [docs/startup.md](startup.md) for behavior and limits.
 

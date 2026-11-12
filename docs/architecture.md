@@ -126,7 +126,13 @@ The helper uses `process.execPath`. Under Bun, its MCP configuration sets `BUN_B
 
 ### Catalog discovery (`src/discovery.ts`, `src/web-catalog.ts`)
 
-Discovery runs the Claude Code `initialize` handshake through an asynchronous supervised child. It never calls synchronous authentication or version probes. A loopback guard denies all HTTP requests and detects attempted Messages requests; discovery cannot consume subscription allowance.
+Discovery runs the Claude Code `initialize` handshake through an asynchronous supervised child. It never calls synchronous authentication or version probes.
+
+Claude Code serves the account's own picker only first-party and only with its nonessential traffic and feature flags on. Behind another `ANTHROPIC_BASE_URL` it logs `[servedCatalog] off (not_first_party)`, and with either switch off it answers a generic list of each family's current model. The served picker also lists older models the account still runs and models gated per account. The handshake therefore talks to Anthropic directly, and its child does not set `CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC` or `DISABLE_TELEMETRY`. A value the user exports is kept. The child sets `DISABLE_ERROR_REPORTING=1` and `DISABLE_AUTOUPDATER=1`. Only the first-party handshake differs: model calls, `auth status`, and request-time probes keep nonessential traffic off.
+
+Discovery never starts a model turn. It writes only `initialize` and closes stdin, so there is no user turn, and an `assistant`, `stream_event`, or `result` record on stdout fails discovery. That check finds model turns, not every request Claude Code makes: on 2.1.322 the handshake's own traffic is its catalog, feature-flag, telemetry, and MCP-directory requests, and none of them is a Messages request.
+
+When the environment points Claude Code at another backend (`ANTHROPIC_BASE_URL`, `CLAUDE_CODE_USE_BEDROCK`, `CLAUDE_CODE_USE_VERTEX`, `CLAUDE_CODE_USE_FOUNDRY`) or at the test upstream, the served picker is out of reach anyway. The handshake then keeps nonessential traffic off, drops the backend switches, which would take Claude Code to its own cloud client, and points `ANTHROPIC_BASE_URL` at a loopback guard. The guard denies all HTTP requests and detects attempted Messages requests.
 
 Cleanup closes the guard's connections, then closes the server only if it is still listening. Bun can stop the server when closing connections; Node leaves it listening. Other cleanup failures remain errors.
 
