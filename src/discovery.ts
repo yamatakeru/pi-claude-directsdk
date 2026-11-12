@@ -1,10 +1,21 @@
-/** Read the account picker without a model request or synchronous CLI probes. */
+/**
+ * Read the account's model picker through Claude Code's `initialize`
+ * handshake, without a model request or synchronous CLI probes.
+ *
+ * Claude Code serves the account's own picker (older models it still runs,
+ * models gated per account) only first-party, so the handshake talks to
+ * Anthropic directly. It writes only `initialize` and closes stdin, so there
+ * is no user turn; a model-turn line on stdout fails discovery. When the
+ * environment points Claude Code at another backend, a loopback guard that
+ * refuses every request stands in for it instead.
+ */
 import { createServer } from "node:http";
 import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSupervised, type ChildHandle } from "./process.js";
-import { resolveClaude, setupChildEnv } from "./setup.js";
+import { pickerChildEnv, resolveClaude } from "./setup.js";
+import { routesElsewhere } from "./request.js";
 import { INSTALL_HINT } from "./errors.js";
 import { isRecord } from "./types.js";
 
@@ -17,35 +28,45 @@ export interface DiscoveredModel {
   supportedEffortLevels?: string[];
 }
 
-export async function discoverModels(signal: AbortSignal): Promise<DiscoveredModel[]> {
+/** Stdout records of a model turn, which a handshake without a user turn never prints. */
+const MODEL_TURN_RECORDS = new Set(["assistant", "stream_event", "result"]);
+
+export async function discoverModels(
+  signal: AbortSignal,
+  baseEnv: NodeJS.ProcessEnv = process.env,
+): Promise<DiscoveredModel[]> {
   signal.throwIfAborted();
-  const env = setupChildEnv(process.env);
+  const env = pickerChildEnv(baseEnv);
   const resolved = resolveClaude(undefined, env);
   if (!resolved) throw new Error(INSTALL_HINT);
   let contacted = false;
-  // Discovery has no reason to send an API request. Deny even the first one.
-  const guard = createServer((request, response) => {
-    if (request.method === "POST" && request.url?.split("?")[0] === "/v1/messages") contacted = true;
-    response.writeHead(403).end("Model requests are disabled during discovery");
-  });
-  await new Promise<void>((resolve, reject) => {
-    guard.once("error", reject);
-    guard.listen(0, "127.0.0.1", resolve);
-  });
+  // Behind another backend, deny every request, even the first one.
+  const guard = routesElsewhere(baseEnv)
+    ? createServer((request, response) => {
+        if (request.method === "POST" && request.url?.split("?")[0] === "/v1/messages") contacted = true;
+        response.writeHead(403).end("Model requests are disabled during discovery");
+      })
+    : undefined;
+  if (guard) {
+    await new Promise<void>((resolve, reject) => {
+      guard.once("error", reject);
+      guard.listen(0, "127.0.0.1", resolve);
+    });
+  }
   let cwd: string | undefined;
   let child: ChildHandle | undefined;
   let primaryError: unknown;
   try {
     cwd = await mkdtemp(join(tmpdir(), "pi-claude-native-picker-"));
-    const address = guard.address();
-    if (!address || typeof address === "string") throw new Error("Discovery guard has no address");
+    const address = guard?.address();
+    if (guard && (!address || typeof address === "string")) throw new Error("Discovery guard has no address");
     const [command = "", ...prefix] = resolved;
     child = spawnSupervised({
       command,
       args: [...prefix, "-p", "--model", "sonnet", "--input-format", "stream-json", "--output-format", "stream-json",
         "--verbose", "--tools", "", "--setting-sources", "", "--strict-mcp-config",
         "--mcp-config", '{"mcpServers":{}}', "--disable-slash-commands", "--no-session-persistence"],
-      env: { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}` },
+      env: address && typeof address !== "string" ? { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}` } : env,
       cwd,
       timeoutMs: 10_000,
       signal,
@@ -63,6 +84,9 @@ export async function discoverModels(signal: AbortSignal): Promise<DiscoveredMod
       if (bytes > 8 * 1024 * 1024) throw new Error("Claude discovery response exceeds 8 MiB");
       if (!line.startsWith("{")) continue;
       const row: unknown = JSON.parse(line);
+      if (isRecord(row) && typeof row["type"] === "string" && MODEL_TURN_RECORDS.has(row["type"])) {
+        throw new Error(`Claude started a model turn during model discovery (${row["type"]} record); discovery stopped`);
+      }
       if (!isRecord(row) || row["type"] !== "control_response") continue;
       const response = row["response"];
       if (!isRecord(response) || response["request_id"] !== "pi-picker") continue;
@@ -97,6 +121,7 @@ export async function discoverModels(signal: AbortSignal): Promise<DiscoveredMod
     const cleanup = [
       async () => { if (child) { child.cancel(); await child.wait(); } },
       async () => {
+        if (!guard) return;
         guard.closeAllConnections();
         // Bun also stops listening here; Node still needs an explicit close.
         if (!guard.listening) return;

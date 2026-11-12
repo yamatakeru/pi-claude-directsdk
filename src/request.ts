@@ -109,6 +109,11 @@ export function checkEnvConflicts(env: NodeJS.ProcessEnv): string[] {
   return conflicts;
 }
 
+/** Whether the environment sends Claude Code to a backend other than Anthropic's own API. */
+export function routesElsewhere(env: NodeJS.ProcessEnv): boolean {
+  return isTruthy(env[TEST_UPSTREAM_ENV]) || checkEnvConflicts(env).length > 0;
+}
+
 export function toolPrefixedName(bare: string): string {
   return `${TOOL_NAME_PREFIX}${bare}`;
 }

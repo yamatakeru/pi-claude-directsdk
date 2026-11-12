@@ -14,6 +14,7 @@ Run it on Node 22. The suite uses `node:test` and needs no subscription credenti
 - The signed-thinking carrier restores only while the visible projection matches.
 - Backend overrides are rejected and API credentials are left out of the Claude Code environment without the test bypass.
 - The usage-credit guard stops an overage turn, permits it with `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1`, and marks the error non-retryable.
+- Discovery reads the served picker first-party with Claude Code's feature flags on, keeps a user's opt-out and the loopback guard behind another backend, and fails on a model-turn record.
 - The tool-change plan emits by-value additions (including redefinitions), removals, and assistant-boundary injections only when model metadata supports them.
 
 The tests use a temporary fake executable in the stream tests. They do not prove real Claude generation, native cache reuse, or upstream acceptance of the beta fields. The installed-Pi harness remains the end-to-end gate.
@@ -105,7 +106,7 @@ Omit `--session` to start without existing history. The scenario keeps one Pi RP
 
 A private benchmark extension blocks tool execution and allows at most one agent provider request per prompt and three in total. An unexpected provider call stops Pi with exit code `78` before the provider runs. This guard applies only to the benchmark, not normal provider behavior. Do not use extensions that independently make model calls outside Pi's agent request path.
 
-Each turn must produce one successful assistant response and admit exactly one upstream request. The harness rejects unexpected tools, retries, compaction, changed Pi prompt/tool hashes, or mismatched native-child counts. Guarded model-discovery children are counted separately because their initialize handshake does not make a model request.
+Each turn must produce one successful assistant response and admit exactly one upstream request. The harness rejects unexpected tools, retries, compaction, changed Pi prompt/tool hashes, or mismatched native-child counts. Model-discovery children are counted separately because their initialize handshake does not make a model request.
 
 The summary reports wall time, token usage, cache-read share, phase timings, replay counts, request bytes, connection reuse, and Pi prefix hashes. It does not save model response text or native request bodies. It reports reuse without asserting a universal percentage: cache size thresholds, lifetime, model, and actual prompt changes affect results. The hashes cover Pi inputs, not CLI-added context.
 

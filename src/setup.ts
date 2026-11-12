@@ -74,6 +74,27 @@ function findOnPath(name: string, env: NodeJS.ProcessEnv): string | undefined {
 
 /** Child environment for setup probes. Never forwards the override variable itself. */
 export function setupChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const child = probeChildEnv(env);
+  child["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1";
+  child["DISABLE_TELEMETRY"] = "1";
+  child["DISABLE_ERROR_REPORTING"] = "1";
+  return child;
+}
+
+/**
+ * Environment of the discovery handshake. Claude Code serves the account's
+ * own picker only with its nonessential traffic and feature flags on, so they
+ * are not switched off here; a value the user exports is kept, and the picker
+ * then falls back to the generic list. Error reports and self-updates stay off.
+ */
+export function pickerChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
+  const child = probeChildEnv(env);
+  child["DISABLE_ERROR_REPORTING"] = "1";
+  child["DISABLE_AUTOUPDATER"] = "1";
+  return child;
+}
+
+function probeChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   const child: NodeJS.ProcessEnv = { ...env };
   dropApiCredentials(child);
   const config = child["PI_CLAUDE_NATIVE_CONFIG_DIR"];
@@ -81,9 +102,6 @@ export function setupChildEnv(env: NodeJS.ProcessEnv): NodeJS.ProcessEnv {
   if (config) {
     child["CLAUDE_CONFIG_DIR"] = config;
   }
-  child["CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC"] = "1";
-  child["DISABLE_TELEMETRY"] = "1";
-  child["DISABLE_ERROR_REPORTING"] = "1";
   return child;
 }
 
