@@ -5,6 +5,8 @@
 
 Use your Claude subscription as a model in Pi. Requests go through the official Claude Code executable and its login, while Pi stays in charge of the conversation, the system prompt, tools, and approvals.
 
+This is an independent project, not made or endorsed by Anthropic.
+
 ## How it differs
 
 - **Claude works as Pi's agent.** Pi's system prompt is the only instruction layer; Claude Code's own prompt, tools, settings, and memory are not added.
@@ -40,13 +42,15 @@ npm install -g --ignore-scripts=false @anthropic-ai/claude-code@2.1.322
 claude auth login
 ```
 
-Install from Git. It follows `main`:
+Install the extension from npm. It follows the latest release:
 
 ```sh
-pi install git:github.com/yamatakeru/pi-claude-native
+pi install npm:pi-claude-native
 ```
 
-To stay on a release instead, add its tag, for example `git:github.com/yamatakeru/pi-claude-native@v0.9.0`; `pi update` does not move a pinned tag. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
+To stay on a release instead, add its version, for example `npm:pi-claude-native@0.9.1`; `pi update` does not move a pinned version. Releases are listed on [GitHub](https://github.com/yamatakeru/pi-claude-native/releases).
+
+To follow `main` between releases, install from Git instead with `pi install git:github.com/yamatakeru/pi-claude-native`, or add a tag such as `@v0.9.1` to stay on a release. Install from one source only: Pi identifies an npm package by its name and a Git package by its URL, so both would load.
 
 Start or restart interactive Pi, open `/model`, and wait for the catalog refresh. On a fresh install, this step must complete before selecting the model from the command line; later invocations can use the saved catalog, for example `pi --model claude-native/haiku`. `pi update --models` does not refresh this catalog.
 
@@ -57,10 +61,21 @@ The model catalog does not guarantee account entitlement. Start with `haiku` for
 ## Upgrade
 
 ```sh
-pi update git:github.com/yamatakeru/pi-claude-native
+pi update npm:pi-claude-native
 ```
 
-A bare `pi update` updates Pi itself, not its packages; `pi update --extensions` updates every installed package. Restart Pi afterwards, then open `/model` and wait for catalog refresh.
+For a Git installation, use `pi update git:github.com/yamatakeru/pi-claude-native`. A bare `pi update` updates Pi itself, not its packages; `pi update --extensions` updates every installed package. Restart Pi afterwards, then open `/model` and wait for catalog refresh.
+
+### Moving from a Git installation
+
+Releases up to 0.9.0 were installed from Git. To move to npm, remove the Git package, then install from npm:
+
+```sh
+pi remove git:github.com/yamatakeru/pi-claude-native
+pi install npm:pi-claude-native
+```
+
+The provider id is unchanged, so saved sessions continue.
 
 ### Moving from pi-claude-directsdk
 
