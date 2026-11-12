@@ -128,6 +128,7 @@ test("denies a retry after any other failure, and a second 401", async (t) => {
   const cases: Array<[string, Answer[]]> = [
     ["a 401 with another error type", [{ status: 401, body: { type: "error", error: { type: "permission_error", message: "no" } } }]],
     ["a 401 without a JSON body", [{ status: 401, body: "unauthorized" }]],
+    ["a 401 past the body cap", [{ status: 401, body: JSON.stringify(AUTH_ERROR).padEnd(64 * 1024) + "x" }]],
     ["a rate limit", [{ status: 429, body: { type: "error", error: { type: "authentication_error", message: "x" } } }]],
   ];
   for (const [name, answers] of cases) {

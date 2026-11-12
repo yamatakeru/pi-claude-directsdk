@@ -477,6 +477,8 @@ export class AdmissionRelay {
       this.activeUpstream !== null ||
       this.failure !== null ||
       this.status !== 401 ||
+      // A body past the cap was not read whole, so it cannot be judged.
+      this.errorBody.length >= ERROR_BODY_CAP ||
       this.upstreamError()?.["type"] !== "authentication_error"
     ) {
       return false;
