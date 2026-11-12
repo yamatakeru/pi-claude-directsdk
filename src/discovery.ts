@@ -58,15 +58,19 @@ export async function discoverModels(
   let primaryError: unknown;
   try {
     cwd = await mkdtemp(join(tmpdir(), "pi-claude-native-picker-"));
-    const address = guard?.address();
-    if (guard && (!address || typeof address === "string")) throw new Error("Discovery guard has no address");
+    let childEnv = env;
+    if (guard) {
+      const address = guard.address();
+      if (!address || typeof address === "string") throw new Error("Discovery guard has no address");
+      childEnv = { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}` };
+    }
     const [command = "", ...prefix] = resolved;
     child = spawnSupervised({
       command,
       args: [...prefix, "-p", "--model", "sonnet", "--input-format", "stream-json", "--output-format", "stream-json",
         "--verbose", "--tools", "", "--setting-sources", "", "--strict-mcp-config",
         "--mcp-config", '{"mcpServers":{}}', "--disable-slash-commands", "--no-session-persistence"],
-      env: address && typeof address !== "string" ? { ...env, ANTHROPIC_BASE_URL: `http://127.0.0.1:${address.port}` } : env,
+      env: childEnv,
       cwd,
       timeoutMs: 10_000,
       signal,
@@ -84,10 +88,12 @@ export async function discoverModels(
       if (bytes > 8 * 1024 * 1024) throw new Error("Claude discovery response exceeds 8 MiB");
       if (!line.startsWith("{")) continue;
       const row: unknown = JSON.parse(line);
-      if (isRecord(row) && typeof row["type"] === "string" && MODEL_TURN_RECORDS.has(row["type"])) {
-        throw new Error(`Claude started a model turn during model discovery (${row["type"]} record); discovery stopped`);
+      if (!isRecord(row)) continue;
+      const type = row["type"];
+      if (typeof type === "string" && MODEL_TURN_RECORDS.has(type)) {
+        throw new Error(`Claude started a model turn during model discovery (${type} record); discovery stopped`);
       }
-      if (!isRecord(row) || row["type"] !== "control_response") continue;
+      if (type !== "control_response") continue;
       const response = row["response"];
       if (!isRecord(response) || response["request_id"] !== "pi-picker") continue;
       if (response["subtype"] === "error") throw new Error("Claude picker initialization failed; check claude auth status");
