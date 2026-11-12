@@ -7,7 +7,7 @@
 | Symptom | Kind or source | Action |
 |---|---|---|
 | No `claude` on `PATH` | `missing` | Install with `npm install -g @anthropic-ai/claude-code` or set `PI_CLAUDE_NATIVE_COMMAND` to the executable path. |
-| CLI installed but not logged in | `logged-out` | Run `claude auth login` as the user Pi runs as, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) in the environment Pi runs in, or point `PI_CLAUDE_NATIVE_CONFIG_DIR` at a logged-in config directory. Then select the provider again. |
+| CLI installed but not logged in | `logged-out` | Run `claude auth login` as the user Pi runs as, set `CLAUDE_CODE_OAUTH_TOKEN` (from `claude setup-token`) in the environment Pi runs in, or point `PI_CLAUDE_NATIVE_CONFIG_DIR` at a logged-in config directory. Then select the provider again. The message names the `claude` executable and config directory Pi used, which can differ from your shell's. |
 | Backend overrides | `env-conflict` | Remove the named variables from the launching environment. Values are never printed. |
 | A turn used usage credits | `billing` | The turn may already be charged. Later turns stop unless `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1` is set. Disable usage credits in the Claude account settings to stay on plan limits. |
 | Catalog refresh fails | catalog | Read the warning for the source or CLI failure. Open `/model` in interactive Pi and wait for refresh. No pinned fallback is used. |
@@ -17,6 +17,7 @@
 | No Claude Native models on a fresh offline install | catalog | Connect once, start interactive Pi, and open `/model`. Wait for refresh before selecting a model from the command line. |
 | History cannot be replayed | `replay` | Compact or restart the session. Causes: assistant prefill (a history ending in an assistant turn without tool calls), a tool call with an empty ID, or an unsupported content block. |
 | Prompt is too long | `native` | Read the reported route and context window. Remove stale `contextWindow` overrides in `models.json` to use verified limits, or compact the session. |
+| The model refused to complete the request | stop reason | The message shows Anthropic's explanation, or the model's text if there is none, plus the refusal category and request id when sent. Include the request id in a false-positive report. |
 | Native request failed | `native` | Read the native detail in the message. |
 | `<model> spent its whole output budget on thinking and returned no answer` | `native` | The turn spent its whole output budget on thinking. Lower the thinking level or switch models, then retry. |
 | `<model> ran out of output tokens while writing the arguments of <tool>` | `native` | The output budget ended inside a tool call, with no text before it. The call was not run. Ask for smaller steps, such as a shorter file per write, or lower the thinking level, then retry. When text came before the call, the turn ends as truncated with that text instead. |
@@ -53,6 +54,8 @@ Subscription mode refuses backend overrides in the merged environment: `ANTHROPI
 Claude Code can report that a response used pay-as-you-go usage credits instead of plan limits. Claude Native stops the turn with a `billing` error unless `PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS=1` is set. The error names the reported status and reset time. The guard runs after the response and usage are captured, so it cannot undo the charge for that turn.
 
 Upstream rejections that mention third-party usage, extra usage, or usage credits produce the same error. Pi's retry classifier treats messages containing `billing` as non-retryable. To stay on plan limits only, disable usage credits in the Claude account settings and leave the override unset. Do not set the override just to silence the error.
+
+When a rejection names third-party apps, the error also suggests trying `PI_CLAUDE_NATIVE_ENTRYPOINT` set to an empty string if plan limit remains, so Claude Code labels the request itself. Anthropic meters that label faster ([Plan usage metering](usage.md#plan-usage-metering)).
 
 Completed and failed turns carry a `pi-claude-native/rate-limit` diagnostic when the native child reported rate-limit status.
 

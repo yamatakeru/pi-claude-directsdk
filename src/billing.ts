@@ -9,6 +9,7 @@
 
 import type { AssistantMessageDiagnostic, JsonObject } from "@earendil-works/pi-ai/compat";
 import { ClaudeNativeError } from "./errors.js";
+import { ENTRYPOINT_ENV } from "./request.js";
 
 export const ALLOW_USAGE_CREDITS_ENV = "PI_CLAUDE_NATIVE_ALLOW_USAGE_CREDITS";
 export const RATE_LIMIT_DIAGNOSTIC = "pi-claude-native/rate-limit";
@@ -57,11 +58,15 @@ export function usageCreditsRejectionError(message: string): ClaudeNativeError |
   if (!USAGE_CREDITS_REJECTION.test(message)) {
     return undefined;
   }
+  const thirdParty = /third-party/iu.test(message)
+    ? ` If your plan limit is not used up, you can try setting ${ENTRYPOINT_ENV} to an empty string so Claude Code ` +
+      "labels the request itself; Anthropic meters that label faster (anthropics/claude-code#97074)."
+    : "";
   return new ClaudeNativeError(
     "billing",
     "Claude Code billing: Anthropic did not accept this request on your Claude plan limits and wants to charge " +
       "it to usage credits. This happens when your plan limit is used up, or when Anthropic classifies the " +
-      "request as third-party app usage. Pi will not retry it. Original error: " +
+      `request as third-party app usage. Pi will not retry it.${thirdParty} Original error: ` +
       message,
   );
 }

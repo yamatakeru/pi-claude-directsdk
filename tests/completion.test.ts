@@ -90,6 +90,14 @@ test("maps native error text and result errors to typed errors", async (t) => {
     if (typeof expected === "string") assert.equal(message, expected, name);
     else assert.match(message, expected, name);
   }
+
+  assert.match(
+    await failure(t, {
+      env: { PI_CLAUDE_NATIVE_CONFIG_DIR: "/tmp/claude-config" },
+      stdout: [resultLine("success", { is_error: false, result: "Not logged in" })],
+    }),
+    / Pi ran \S+fake-claude\.mjs with config directory \/tmp\/claude-config\. \(native: Not logged in\)$/,
+  );
 });
 
 test("requires exactly one result, an assistant message and message_stop", async (t) => {
@@ -277,6 +285,29 @@ test("maps stop reasons", async (t) => {
   assert.equal(refused.stopReason, "error");
   assert.equal(refused.errorMessage, "I can't help with that.");
   assert.ok(refused.diagnostics?.some((item) => item.type === "pi-claude-native/native"));
+
+  const stopDetails = { category: "cyber", explanation: "Flagged by safeguards." };
+  for (const blocks of [[], [{ type: "text" as const, text: "partial" }]]) {
+    assert.equal(
+      await failure(t, {
+        upstream: { headers: { "request-id": "req_test" }, body: sseResponse({ blocks, stopReason: "refusal", stopDetails }) },
+        stdout: [resultLine("success")],
+      }),
+      "Flagged by safeguards. (category cyber, request id req_test)",
+    );
+  }
+  // Without a relay capture, the details come from the child's assistant line.
+  const refusal = { blocks: [], stopReason: "refusal" };
+  assert.equal(
+    await failure(t, {
+      stdout: [
+        ...streamEventLines(refusal),
+        { type: "assistant", message: { role: "assistant", content: [], stop_reason: "refusal", stop_details: stopDetails } },
+        resultLine("success"),
+      ],
+    }),
+    "Flagged by safeguards. (category cyber)",
+  );
 
   assert.equal(
     errorMessage(await events(t, { stdout: streamed(reply("ok", "surprise")) })).errorMessage,

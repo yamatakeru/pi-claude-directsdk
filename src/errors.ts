@@ -41,9 +41,18 @@ export function missingError(): ClaudeNativeError {
   return new ClaudeNativeError("missing", INSTALL_HINT);
 }
 
-export function loggedOutError(detail?: string): ClaudeNativeError {
-  const suffix = detail ? ` (native: ${detail})` : "";
-  return new ClaudeNativeError("logged-out", `${LOGGED_OUT_HINT}${suffix}`);
+/** Which Claude Code ran, and with which config directory; the shell may resolve another. */
+export interface ClaudeLocation {
+  command: string;
+  configDir: string | undefined;
+}
+
+export function loggedOutError(detail: string, location: ClaudeLocation): ClaudeNativeError {
+  const dir = location.configDir ? `config directory ${location.configDir}` : "Claude Code's default config directory";
+  return new ClaudeNativeError(
+    "logged-out",
+    `${LOGGED_OUT_HINT} Pi ran ${location.command} with ${dir}. (native: ${detail})`,
+  );
 }
 
 export function envConflictError(names: string[]): ClaudeNativeError {
